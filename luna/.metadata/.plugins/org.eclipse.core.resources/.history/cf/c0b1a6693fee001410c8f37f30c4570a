@@ -1,0 +1,239 @@
+package graficaspack;
+
+import irrisoftpack.Irrisoft;
+import irrisoftpack.IrrisoftConstantes;
+
+import java.awt.Dimension;
+import java.awt.EventQueue;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
+import java.beans.PropertyChangeEvent;
+import java.beans.PropertyChangeListener;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.Locale;
+
+import javax.swing.JDialog;
+import javax.swing.JFrame;
+import javax.swing.Timer;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.jfree.chart.ChartFactory;
+import org.jfree.chart.ChartPanel;
+import org.jfree.chart.JFreeChart;
+import org.jfree.chart.axis.ValueAxis;
+import org.jfree.chart.plot.XYPlot;
+import org.jfree.data.time.DynamicTimeSeriesCollection;
+import org.jfree.data.time.Minute;
+import org.jfree.data.time.Second;
+
+public class GraficasSensores extends JFrame implements Runnable,
+	PropertyChangeListener {
+
+    private static Logger logger = LogManager.getLogger(GraficasSensores.class
+	    .getName());
+
+    public String titulo;
+    public String ejex, ejey;
+    private static GraficasSensores instance;
+    private DynamicTimeSeriesCollection contenido;
+    private JFreeChart graficaDeTiempo;
+    private Timer cronometro = null;
+    private float[] newData;
+    private static final long serialVersionUID = 1L;
+    private Irrisoft IR;
+    private boolean muerte=false;
+
+    public static GraficasSensores getInstance() {
+	if (instance == null) {
+	    return new GraficasSensores();
+	}
+	return instance;
+    }
+
+    private GraficasSensores() {
+	this.IR = Irrisoft.window;
+	setType(Type.NORMAL);
+	setTitle("Grafica de lecturas");
+	setResizable(false);
+	setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
+	setBounds(100, 100, 800, 500);
+
+	this.addWindowListener(new WindowAdapter() {
+	    @Override
+	    public void windowClosing(final WindowEvent event) {
+		muerte = true;
+		for (int i = 0; i < IR.sensores.size(); i++) {
+		    if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_5
+			    && IR.sensores.get(i).getNum_sensor()
+				    .contains("Pu")) {
+			IR.sensores.get(i).removePropertyChangeListener(
+				"pulsos", IR.panelecturasbt2);
+			IR.sensores.get(i).removePropertyChangeListener(
+				"lectura", IR.panelecturasbt2);
+		    } else if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_6
+			    && IR.sensores.get(i).getNum_sensor()
+				    .contains("Pu")) {
+			IR.sensores.get(i).removePropertyChangeListener(
+				"pulsos", IR.panelecturasbt2);
+			IR.sensores.get(i).removePropertyChangeListener(
+				"lectura", IR.panelecturasbt2);
+		    } else if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_7
+			    && IR.sensores.get(i).getNum_sensor()
+				    .contains("Pu")) {
+			IR.sensores.get(i).removePropertyChangeListener(
+				"pulsos", IR.panelecturasbt2);
+			IR.sensores.get(i).removePropertyChangeListener(
+				"lectura", IR.panelecturasbt2);
+		    } else if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_8
+			    && IR.sensores.get(i).getNum_sensor()
+				    .contains("Pu")) {
+			IR.sensores.get(i).removePropertyChangeListener(
+				"pulsos", IR.panelecturasbt2);
+			IR.sensores.get(i).removePropertyChangeListener(
+				"lectura", IR.panelecturasbt2);
+		    }
+		}
+	    }
+	});
+    }
+
+    @Override
+    public void run() {
+
+	crearGrafica();
+	
+	while (!muerte){
+	    
+	    logger.info("Hola estoy en el hilo de gráfica");
+	    
+	    try {
+		if (muerte){
+		    logger.info("Hola salgo de hilo de gráfica");
+		    break;
+		}
+		Thread.sleep (30000);
+		if (muerte){
+		    logger.info("Hola salgo de hilo de gráfica");
+		    break;
+		}
+		Thread.sleep (30000);
+		contenido.advanceTime();
+		
+		contenido.appendData(newData);
+	    } catch (InterruptedException e) {
+		// TODO Auto-generated catch block
+		e.printStackTrace();
+	    }    
+	}
+	    System.out.println("MUERE HILOGRAFICA");
+    }
+
+    private void crearGrafica() {
+	XYPlot plot;
+	ValueAxis axis;
+
+	// cronometro = new Timer(6000,this);
+
+	Calendar ahora = Calendar.getInstance();
+
+	// contenido = new DynamicTimeSeriesCollection(1,1440, new Second());
+
+	contenido = new DynamicTimeSeriesCollection(1, 4, new Minute());
+	// contenido.setTimeBase(new Minute(new
+	// Date(ahora.getTime().getTime()-(60*1438*1000)),ahora.getTimeZone(),new
+	// Locale(System.getProperty("user.language"),
+	// System.getProperty("user.country"))));
+//	contenido.setTimeBase(new Minute(new Date(
+//		ahora.getTime().getTime() - (600000)), ahora.getTimeZone(),
+//		new Locale(System.getProperty("user.language"), System
+//			.getProperty("user.country"))));
+	contenido.addSeries(new float[1], 0, titulo);
+
+	graficaDeTiempo = ChartFactory.createTimeSeriesChart("", ejey, ejex,
+		contenido, true, true, false);
+
+	plot = graficaDeTiempo.getXYPlot();
+
+	axis = plot.getDomainAxis();
+	axis.setAutoRange(true);
+	axis.setFixedAutoRange(120000);
+	axis = plot.getRangeAxis();
+
+	ChartPanel chartPanel = new ChartPanel(graficaDeTiempo);
+	chartPanel.setPreferredSize(new Dimension(785, 440));
+	chartPanel.setRefreshBuffer(true);
+	chartPanel.setDoubleBuffered(true);
+	chartPanel.setMouseZoomable(true);
+	// ChartPanel panelDeLaGraphica = new
+	// ChartPanel(graphicaDeTiempo);//crea un panel para graficas
+	//
+	// add(panelDeLaGraphica);
+	// cronometro = new Timer(60000, new ActionListener() {
+	// public void actionPerformed(ActionEvent e) {
+	// EventQueue.invokeLater(new Runnable() {
+	// @Override
+	// public void run() {
+	// logger.warn("Entra por el Run GRAF CAU");
+	// update(Float.parseFloat(getCaudal()));
+	// }
+	//
+	//
+	// });
+	// }
+	// });
+	//
+	// cronometro.start();
+	add(chartPanel);
+	setVisible(true);
+
+    }
+
+    public void update(float value) {
+	newData = new float[1];
+	newData[0] = value;
+	contenido.appendData(newData);
+    }
+
+    @Override
+    public void propertyChange(PropertyChangeEvent evt) {
+	String nombreCampo = evt.getPropertyName();
+	String valor = evt.getNewValue().toString().replace(",", ".");
+	
+	if ("lectura".equals(nombreCampo)) {
+	    update(Float.parseFloat(valor));
+	} else if ("pulsos".equals(nombreCampo)) {
+	    update(Float.parseFloat(valor));
+	}
+
+    }
+
+    //GETTER Y SETTER 
+    public String getTitulo() {
+        return titulo;
+    }
+
+    public void setTitulo(String titulo) {
+        this.titulo = titulo;
+    }
+
+    public String getEjex() {
+        return ejex;
+    }
+
+    public void setEjex(String ejex) {
+        this.ejex = ejex;
+    }
+
+    public String getEjey() {
+        return ejey;
+    }
+
+    public void setEjey(String ejey) {
+        this.ejey = ejey;
+    }
+
+}

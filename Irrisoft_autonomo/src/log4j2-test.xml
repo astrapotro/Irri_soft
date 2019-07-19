@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration status="info" name="Log4j Paquete Irrisoftpack"
+	packages="">
+	<appenders>
+		<Console name="Console" target="SYSTEM_OUT">
+			<PatternLayout
+			 pattern= "%highlight{%d{HH:mm:ss.SS} [%t] [%-5level] [%logger{10}].%M() [%L] - %msg%n}{FATAL=red bright, ERROR=magenta, WARN=yellow bright , INFO=green , DEBUG=white, TRACE=green}"/>
+		</Console>
+		<File name="Fichero Irrisoft" fileName="irrisoft/IrrisoftPack.log"
+			append="false">
+			<PatternLayout pattern="%d{HH:mm:ss} [%t] [%-5level] [%logger{10}] [%L] - %msg%n" />
+		</File>
+		<File name="Fichero Paneles" filename="irrisoft/PanelesPack.log"
+			append="false">
+			<PatternLayout pattern="%d{HH:mm:ss} [%t] [%-5level] [%logger{10}] [%L] - %msg%n" />
+		</File>
+		<File name="Fichero Programa" filename="irrisoft/ProgramaPack.log"
+			append="false">
+			<PatternLayout pattern="%d{HH:mm:ss} [%t] [%-5level] [%logger{10}] [%L] - %msg%n" />
+		</File>
+		<File name="Fichero Sensores" filename="irrisoft/SensoresPack.log"
+			append="false">
+			<PatternLayout pattern="%d{HH:mm:ss} [%t] [%-5level] [%logger{10}] [%L] - %msg%n" />
+		</File>
+		<File name="Fichero Tarea" filename="irrisoft/TareaPack.log"
+			append="false">
+			<PatternLayout pattern="%d{HH:mm:ss} [%t] [%-5level] [%logger{10}] [%L] - %msg%n" />
+		</File>
+		<File name="Fichero Volcado" filename="irrisoft/Volcado.log"
+			append="false">
+			<PatternLayout pattern="%d{HH:mm:ss} [%t] [%-5level] [%logger{10}] [%L] - %msg%n" />
+		</File>
+	</appenders>
+	<loggers>
+		<root level="info">
+			<appender-ref ref="Console" level="info" />
+		</root>
+		<Logger name="irrisoftpack" level="info" additivity="false">
+			<appender-ref ref="Console" />
+<!-- 			<appender-ref ref="Fichero Irrisoft" />  -->
+		</Logger>
+		<Logger name="panelespack" level="info" additivity="false">
+			<appender-ref ref="Console" />
+<!-- 			<appender-ref ref="Fichero Paneles" />  -->
+		</Logger>
+		<Logger name="programapack" level="info" additivity="false">
+			<appender-ref ref="Console" />
+<!-- 			<appender-ref ref="Fichero Programa" />  -->
+		</Logger>
+		<Logger name="sensorespack" level="info" additivity="false">
+			<appender-ref ref="Console" />
+<!-- 			<appender-ref ref="Fichero Sensores" /> -->
+		</Logger>
+		<Logger name="tareapack" level="info" additivity="false">
+			<appender-ref ref="Console" />
+<!-- 			<appender-ref ref="Fichero Tarea" /> -->
+		</Logger>
+		<Logger name="volcadopack" level="info" additivity="false">
+			<appender-ref ref="Console" />
+<!-- 			<appender-ref ref="Fichero Volcado" /> -->
+		</Logger>
+	</loggers>
+</configuration>

@@ -1,0 +1,657 @@
+package sensorespack;
+
+import irrisoftpack.Irrisoft;
+import irrisoftpack.IrrisoftConstantes;
+import irrisoftpack.SerialDriver;
+
+import java.beans.PropertyChangeEvent;
+import java.beans.PropertyChangeListener;
+import java.util.ArrayList;
+import java.util.Arrays;
+
+import jssc.SerialPortException;
+import jssc.SerialPortTimeoutException;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import programapack.Programacion;
+import alertaspack.GestorAlertas;
+import valvulaspack.Valvula;
+
+public class HiloHumedadSuelo extends Sensor implements Runnable,
+	PropertyChangeListener {
+
+    private static Logger logger = LogManager.getLogger(HiloHumedadSuelo.class
+	    .getName());
+
+    // protected SerialPort serialPort;
+    // protected OutputStream out;
+    // protected InputStream in;
+    protected SerialDriver serialcon;
+    // protected String puerto;
+    protected int len, leo;
+    public Sensor sens;
+
+    protected ArrayList<Valvula> valvulas;
+    protected byte[] bufferresp = { 0, 0, 0, 0, 0, 0 };
+    private boolean respuestalost = false;
+    private int[] bufferrespsinsigno = new int[6];
+    private GestorAlertas gestorAlertas;
+    private Irrisoft IR;
+
+    // Variables para interactuar con el programa asociado
+    public int tiemporegado = 0;
+    public boolean terminado;
+
+    // private Programacion progasociado;
+    private long lecturant = 0L;
+    private int medicion = 0;
+    private double voltaje = 0;
+    private double medida = 0;
+
+    // public boolean duraciontarcambiada;
+
+    public boolean empiezasemiauto;
+
+    private long temp = 0;
+    public int humedad = 0;
+
+    public HiloHumedadSuelo(SerialDriver serialDriver, Sensor sens) {
+	this.serialcon = serialDriver;
+	this.sens = sens;
+	gestorAlertas = GestorAlertas.getInstance();
+	this.IR = Irrisoft.window;
+    }
+
+    /**
+     * Eligo si va para la placas MCI y BT2.
+     * 
+     * @see java.lang.Runnable#run()
+     */
+    public void run() {
+
+	// Me quedo esperando a que leerconfini me avise !
+	synchronized (sens.getHilosens()) {
+	    try {
+		sens.getHilosens().wait();
+	    } catch (InterruptedException e) {
+		if (logger.isErrorEnabled()) {
+		    logger.error("Hilo interrumpido: " + e.getMessage());
+		}
+	    }
+	}
+
+	dormirSensor();
+
+	// Marco como propietarias o asociadas al sensor las válvulas
+	// correspondientes
+	for (int i = 0; i < sens.getValvsasociadas().size(); i++) {
+
+	    if (sens.getValvsasociadas().get(i).getCodelecvalv()
+		    .equals(sens.getNum_est_prop().toString()))
+		sens.getValvsasociadas().get(i).setPropietaria(true);
+	    else
+		sens.getValvsasociadas().get(i).setAsociada(true);
+	}
+
+	while (true) {
+
+	    if (sens.isTerminar()) {
+		logger.warn("Termino el hilo de Humedad porque se ha rearmado Irrisoft");
+		return;
+	    }
+
+	    if (logger.isInfoEnabled()) {
+		logger.info(("Estoy en hilohumedadsuelo"));
+	    }
+
+	    // Imprimo la lista de valvs asociadas y propietaria
+	    for (int i = 0; i < sens.getValvsasociadas().size(); i++) {
+		if (sens.getValvsasociadas().get(i).isPropietaria())
+		    System.out.println("Valv "
+			    + sens.getValvsasociadas().get(i).getCodelecvalv()
+			    + " (Propietaria) asociada al sensor "
+			    + sens.getNum_sensor());
+		else if (sens.getValvsasociadas().get(i).isAsociada())
+		    System.out.println("Valv "
+			    + sens.getValvsasociadas().get(i).getCodelecvalv()
+			    + " (Asociada) asociada al sensor "
+			    + sens.getNum_sensor());
+	    }
+
+	    if (sens.getProgasociado() != null) {
+		System.out.println("Programa "
+			+ sens.getProgasociado().getCodprograma() + " - "
+			+ sens.getProgasociado().getUltdeberes()
+			+ " asociado al sensor " + sens.getNum_sensor());
+
+	    }
+
+	    dormirSensor();
+
+	    if (sens.isTerminar()) {
+		logger.warn("Termino el hilo de Humedad porque se ha rearmado Irrisoft");
+		return;
+	    }
+
+	    // Pregunto la humedad y ejecuto algoritmo asociado
+	    leehumedad();
+
+	}
+
+    }
+
+    /**
+     * Lee la humedad para una BT2.
+     */
+    public void leehumedad() {
+
+	temp = 0;
+
+	// Recojo la humedad actual
+	if (sens.getTipo_placa().contains("BT"))
+	    humedad = preguntohumbt();
+	else
+	    humedad = preguntohumgon();
+
+	if (!respuestalost) {
+
+	    if (logger.isInfoEnabled()) {
+		logger.info("La humedad del suelo es de : " + humedad + " %");
+	    }
+
+	    // Si la lectura es menor al umbral mínimo
+	    if (humedad < sens.getMed_umbral_min()) {
+
+		// Si el programa asociado ya ha regado y vuelvo a tener una
+		// lectura de seco AVISO
+		if (terminado)
+		    gestorAlertas.insertarAlarma(
+			    2012,
+			    sens.getNum_sensor() + ": "
+				    + sens.getNum_est_prop() + ", "
+				    + sens.getNum_est_asoc());
+
+		// Sólo imprimo y mando alarma cuando la lectura es distinta a
+		// la anterior
+		if (lecturant != humedad) {
+		    // Genero alarma: Humedad de suelo escaso en estaciones.
+		    gestorAlertas.insertarAlarma(
+			    3011,
+			    sens.getNum_sensor() + ": "
+				    + sens.getNum_est_prop() + ", "
+				    + sens.getNum_est_asoc());
+		    IR.escribetextPane(
+			    "\nLectura < al umb mín de " + sens.getNum_sensor()
+				    + ": " + sens.getLectura()
+				    + sens.getUni_med() + " - ", IR.fallo, true);
+		}
+
+		// Solo entro si el programa asociado no ha regado hoy aún
+		if (!terminado) {
+		    // Si es manual o no tiene programa asociado NO TIENE QUE
+		    // ACTUAR
+		    if (sens.getProgasociado() != null
+			    && !sens.getProgasociado().getModo()
+				    .contentEquals("M")
+			    && sens.getProgasociado().getTareasprog().size() > 0) {
+
+			if (sens.getProgasociado().getTareasprog().get(0)
+				.isHecha() == 0) {
+			    if (sens.getProgasociado().getModo()
+				    .contentEquals("A"))
+				IR.escribetextPane(
+					"\nLa programación automática ("
+						+ sens.getProgasociado()
+							.getIdprograma()
+						+ ") asociada  a "
+						+ sens.getNum_sensor()
+						+ " empieza inmediatamente",
+					IR.ok, false);
+			    else if (sens.getProgasociado().getModo()
+				    .contentEquals("S"))
+				IR.escribetextPane(
+					"\nLa programación semiautomática ("
+						+ sens.getProgasociado()
+							.getIdprograma()
+						+ ") asociada  a "
+						+ sens.getNum_sensor()
+						+ " empieza a las "
+						+ sens.getProgasociado()
+							.getHorasini().get(0),
+					IR.ok, false);
+
+			}
+
+			// Si el prog asociado está en automático queda = 0
+			if (sens.getProgasociado().getModo().contentEquals("A")) {
+			    // Seteo queda a 0 en hiloprog para que
+			    // empiece a
+			    // regar si no se ha pasado de hora
+			    auto();
+			} // Si el prog asociado está en semiautomático duermo
+			  // hasta que me avise
+			else if (sens.getProgasociado().getModo()
+				.contentEquals("S")) {
+			    semiauto();
+			}
+
+			// //////////////////////////////////////////////////////
+			//
+			// Empieza el algoritmo de riego por falta de humedad
+			//
+			// //////////////////////////////////////////////////////
+
+			algoritmo();
+
+		    }
+
+		}
+
+		// Si la medida es mayor o igual al umbral máximo
+	    } else if (humedad >= sens.getMed_umbral_max()) {
+
+		// Sólo imprimo y mando alarma cuando la lectura es distinta a
+		// la anterior
+		if (lecturant != humedad) {
+		    IR.escribetextPane(
+			    "\nLectura > al umb máx de " + sens.getNum_sensor()
+				    + ": " + sens.getLectura()
+				    + sens.getUni_med() + " - ", IR.fallo, true);
+		}
+
+		// Sólo si la programación asociada no se ha ejecutado hoy
+		if (!terminado) {
+
+		    if (sens.getProgasociado() != null
+			    && !sens.getProgasociado().getModo()
+				    .contentEquals("M")
+			    && sens.getProgasociado().getTareasprog().size() > 0) {
+
+			// Si el prog asociado está en automático queda = 0
+			if (sens.getProgasociado().getModo().contentEquals("A")) {
+			    // Seteo queda a 0 en hiloprog y cancelo el programa
+			    // para que no riegue
+			    IR.escribetextPane("\nCancelada programación ("
+				    + sens.getProgasociado().getIdprograma()
+				    + ") (" + sens.getProgasociado().getModo()
+				    + ") asociada a " + sens.getNum_sensor()
+				    + " por exceso de humedad en suelo.",
+				    IR.fallo, false);
+
+			    sens.getProgasociado().setCancelado(true);
+
+			    // AVISO al hilo en caso de que esté regando!!!
+			    if (sens.getProgasociado().getTareasprog().get(0)
+				    .getHilotar().getState().toString()
+				    .contentEquals("WAITING")) {
+				synchronized (sens.getProgasociado()
+					.getTareasprog().get(0).hiloprog) {
+				    sens.getProgasociado().getTareasprog()
+					    .get(0).hiloprog.notify();
+				}
+			    }
+
+			    auto();
+
+			} // Si el prog asociado está en semiautomático duermo
+			  // hasta que me avise
+			else if (sens.getProgasociado().getModo()
+				.contentEquals("S")) {
+			    semiauto();
+			    if (humedad < sens.getMed_umbral_max())
+				algoritmo();
+			}
+		    }
+		}
+
+	    } else { // Está en medio (no hago ná)
+
+	    }
+	}
+
+    }
+
+    /**
+     * Se encarga de preguntar a la placa controladora o de sensores
+     */
+
+    public int preguntohumgon() {
+
+	byte[] buftransgon = { (byte) 0x01, (byte) sens.getNum_borna(),
+		(byte) 0x00, (byte) 0x00, (byte) 0x00,
+		(byte) (1 + sens.getNum_borna()) };
+
+	respuestalost = false;
+	lecturant = (int) medida;
+
+	try {
+	    serialcon.cogesemaforo(sens.getNum_placa());
+	    serialcon.purga_puerto(serialcon.serialPort);
+	    // compruebo si la línea está caida y si lo está espero
+	    sens.lineacaida();
+	    if (serialcon.serialPort.writeBytes(buftransgon)) {
+		if (logger.isInfoEnabled()) {
+		    logger.info("Comando mandado al puerto serie !"
+			    + Arrays.toString(buftransgon));
+		}
+	    } else {
+		if (logger.isErrorEnabled()) {
+		    logger.error("Fallo en mandar comando al puerto serie! "
+			    + Arrays.toString(buftransgon));
+		}
+
+		respuestalost = true;
+	    }
+
+	    bufferresp = serialcon.serialPort.readBytes(6, 4000);
+
+	    // Le quito el signo alos bytes
+	    for (int j = 0; j < bufferresp.length; j++) {
+
+		bufferrespsinsigno[j] = bufferresp[j] & 0xFF;
+
+	    }
+
+	    if (logger.isInfoEnabled()) {
+		logger.info("Comando: " + bufferrespsinsigno[0]);
+		logger.info("Borna: " + bufferrespsinsigno[1]);
+		logger.info("Lectura1: " + bufferrespsinsigno[2]);
+		logger.info("Lectura2: " + bufferrespsinsigno[3]);
+		logger.info("Lectura3: " + bufferrespsinsigno[4]);
+		logger.info("Checksum: " + bufferrespsinsigno[5]);
+	    }
+
+	    medicion = ((bufferrespsinsigno[3] * 256) + bufferrespsinsigno[2]);
+
+	    // Voltaje de referencia tiene que ir al sensor, ahora a mano 4.998
+	    voltaje = ((double) medicion / 1023) * 4.998;
+
+	    // Pasar el voltaje a la medida
+	    medida = ((sens.getRang_med_max() - sens.getRang_med_min()) / (sens
+		    .getRang_sal_max() - sens.getRang_sal_min()))
+		    * (voltaje - sens.getRang_sal_min())
+		    + sens.getRang_med_min();
+
+	    voltaje = Math.rint(voltaje * 100) / 100;
+	    medida = Math.rint(medida * 10) / 10;
+
+	    logger.info("Medición: " + medicion);
+	    logger.info("Voltaje: " + voltaje);
+
+	    // Meto las lecturas al sensor
+	    sens.setVoltaje(voltaje);
+	    sens.setLectura(Double.toString(medida));
+
+	} catch (SerialPortException | SerialPortTimeoutException e) {
+	    if (logger.isErrorEnabled()) {
+		if (e instanceof SerialPortException)
+		    logger.error(e.getMessage());
+		else if (e instanceof SerialPortTimeoutException) {
+		    logger.error("TIMEOUUUUUT en la lectura del buffer serie humedad: "
+			    + e.getMessage());
+		    IR.escribetextPane(
+			    "\nTIMEOUUUUUT en la lectura del buffer serie humedad",
+			    IR.normal, false);
+
+		    respuestalost = true;
+
+		}
+	    }
+	} finally {
+	    serialcon.purga_puerto(serialcon.serialPort);
+	    serialcon.sueltasemaforo(sens.getNum_placa());
+	}
+
+	return (int) medida;
+    }
+
+    /**
+     * Se encarga de preguntar a la placa BT2
+     * */
+
+    public int preguntohumbt() {
+
+	byte[] buftransbt = { (byte) 0x06, (byte) 0x00, (byte) 0x03,
+		(byte) 0x00, (byte) sens.getNum_borna(),
+		(byte) (6 + 3 + sens.getNum_borna()) };
+
+	respuestalost = false;
+	lecturant = bufferresp[4];
+
+	try {
+	    try {
+		serialcon.cogesemaforo(sens.getNum_placa());
+		IR.esperarTiempo(IrrisoftConstantes.DELAY_200MSEG,
+			"leehumedadBT2");
+		serialcon.purga_puerto(serialcon.serialPort);
+		// compruebo si la línea está caida y si lo está espero
+		sens.lineacaida();
+		if (serialcon.serialPort.writeBytes(buftransbt)) {
+
+		    if (logger.isInfoEnabled()) {
+			logger.info("Comando mandado al puerto serie !"
+				+ Arrays.toString(buftransbt));
+		    }
+		} else {
+		    if (logger.isErrorEnabled()) {
+			logger.error("Fallo en mandar comando al puerto serie! "
+				+ Arrays.toString(buftransbt));
+		    }
+		}
+
+		bufferresp = serialcon.serialPort.readBytes(6, 6000);
+
+	    } catch (SerialPortException | SerialPortTimeoutException e) {
+		if (logger.isErrorEnabled()) {
+		    if (e instanceof SerialPortException)
+			logger.error(e.getMessage());
+		    else if (e instanceof SerialPortTimeoutException) {
+			logger.error("TIMEOUUUUUT en la lectura del buffer serie: "
+				+ e.getMessage());
+			IR.escribetextPane(
+				"\nTIMEOUUUUUT en la lectura del buffer serie humedad",
+				IR.normal, false);
+			respuestalost = true;
+		    }
+		}
+	    } finally {
+		serialcon.purga_puerto(serialcon.serialPort);
+		serialcon.sueltasemaforo(sens.getNum_placa());
+	    }
+	} catch (Exception e) {
+	    if (logger.isErrorEnabled()) {
+		logger.error(e.getMessage());
+		logger.error(e.getStackTrace());
+	    }
+	}
+
+	sens.setLectura(Integer.toString(bufferresp[4]));
+
+	return (int) bufferresp[4];
+    }
+
+    private void auto() {
+	if (sens.getProgasociado().getTareasprog().get(0).hiloprog != null) {
+	    if (!sens.getProgasociado().getTareasprog().get(0).hiloprog.pasadodehora) {
+		synchronized (sens.getProgasociado().getTareasprog().get(0).hiloprog.queda) {
+		    sens.getProgasociado().getTareasprog().get(0).hiloprog.queda = 0L;
+		}
+	    }
+	}
+    }
+
+    private void semiauto() {
+	int i = 0;
+	while (!empiezasemiauto) {
+	    try {
+		Thread.sleep(10000);
+	    } catch (InterruptedException e) {
+		// TODO Auto-generated catch block
+		e.printStackTrace();
+	    }
+	    if (i == 6) {
+		// Leo la homedad
+		humedad = preguntohumbt();
+		i = 0;
+	    }
+	    i++;
+	}
+    }
+
+    private void algoritmo() {
+	long sumatoriotemp = 0;
+	long duerme = 0;
+
+	tiemporegado = sens.getProgasociado().getTareasprog().get(0)
+		.getTiemporegado();
+
+	// Lo sigo regando mientras no haya alcanzado la humedad
+	// adecuada o mientras no haya regado el tiempo max
+	while (humedad < sens.getMed_umbral_max()) {
+
+	    // Espero a que el hiloprogama de la valvula propietaria se quede en
+	    // wait
+	    while (!sens.getProgasociado().getTareasprog().get(0).getHilotar()
+		    .getState().toString().contains("WAITING")) {
+		try {
+		    Thread.sleep(5000);
+		} catch (InterruptedException e) {
+		    // TODO Auto-generated catch block
+		    e.printStackTrace();
+		}
+	    }
+	    // Aviso al hiloprograma de la valvula propietaria
+	    synchronized (sens.getProgasociado().getTareasprog().get(0).hiloprog) {
+		sens.getProgasociado().getTareasprog().get(0).hiloprog.notify();
+	    }
+
+	    System.out.println("tiemporegado en hilhumedadsuelo: "
+		    + tiemporegado);
+	    // Si ya ha regado el tiempo máximo
+	    // if ((sens.getT_max_riego() - sumatoriotemp <=
+	    // tiemporegado)) {
+	    if (tiemporegado >= sens.getT_max_riego() - sumatoriotemp) {
+		// Para que si el tiempo máximo de riego es 0 no
+		// deje de
+		// regar hasta que llegue a la medidaumbral
+		// minima
+		// !!!
+		if (sens.getT_max_riego() != 0) {
+		    terminado = true;
+		    try {
+
+			// Espero a que el programa asociado me
+			// avise de
+			// que continue
+			synchronized (this) {
+			    this.wait();
+			}
+			// Genero alarma: Sensor de humedad
+			// tiempo
+			// max de riego.
+			gestorAlertas.insertarAlarma(
+				3033,
+				sens.getNum_est_prop() + ", "
+					+ sens.getNum_est_asoc());
+
+		    } catch (InterruptedException e) {
+			e.printStackTrace();
+		    }
+
+		    return;
+		}
+	    }
+
+	    if (sens.getT_max_riego() - (sumatoriotemp + tiemporegado) > 30) {
+		duerme = IrrisoftConstantes.DELAY_SENSOR_30SEG;
+	    } else if (sens.getT_max_riego() - (sumatoriotemp + tiemporegado) > 10) {
+		duerme = IrrisoftConstantes.DELAY_SENSOR_10SEG;
+	    } else
+		duerme = 0;
+
+	    if (duerme > 0)
+		// Duermo 30seg
+		IR.esperarTiempo(duerme, "leehumedadBT2");
+
+	    if (tiemporegado + (duerme / 1000L) + sumatoriotemp >= sens
+		    .getT_max_riego()) {
+		tiemporegado = tiemporegado + (int) (duerme / 1000L);
+		continue;
+	    }
+
+	    temp = System.currentTimeMillis();
+	    // Vuelvo a leer la hu0medad
+	    humedad = preguntohumbt();
+	    if (!respuestalost)
+		sens.setLectura(Integer.toString(bufferresp[4]));
+
+	    if (logger.isInfoEnabled()) {
+		if (!respuestalost)
+		    logger.info("Humedad de suelo (sensor): " + humedad + "%");
+		logger.info("Tiempo regado por falta de humedad (sensor) : "
+			+ tiemporegado + " sgs");
+	    }
+
+	    temp = System.currentTimeMillis() - temp;
+	    sumatoriotemp = (int) ((sumatoriotemp + temp) / 1000);
+	    tiemporegado = tiemporegado + (int) (duerme / 1000L)
+		    + (int) (temp / 1000L);
+
+	}
+
+	if (sens.getProgasociado().getTareasprog().get(0).getHilotar()
+		.getState().toString().contains("WAITING")) {
+	    // Aviso al hiloprograma de la valvula propietaria
+	    synchronized (sens.getProgasociado().getTareasprog().get(0).hiloprog) {
+		sens.getProgasociado().getTareasprog().get(0).hiloprog.notify();
+	    }
+	}
+
+	terminado = true;
+
+    }
+
+    private void dormirSensor() {
+	// try {
+
+	// TODO Tiempo variable cambiarlo por tiempo de lectura
+	// sens.getFrec_lect() !!!
+	//
+	IR.esperarTiempo(IrrisoftConstantes.DELAY_SENSOR_30SEG * 2,
+		"dormirSensor");
+
+	// int dormir = (int) (sens.getFrec_lect() * IrrisoftConstantes.A_MSGS);
+	//
+	// while (dormir > 0) {
+	// if (rearmarHum)
+	// break;
+	// serialcon.esperaPregunta(120000);
+	// IR.esperarTiempo(120000,"dormirSensor Humedad");
+	// dormir = dormir - 120000;
+	// }
+
+	// } catch (InterruptedException e1) {
+	// if (logger.isErrorEnabled()) {
+	// logger.error("Hilo interrumpido: " + e1.getMessage());
+	// }
+	// }
+    }
+
+    @Override
+    public void propertyChange(PropertyChangeEvent evt) {
+
+	String nombreCampo = evt.getPropertyName();
+
+	// Listener para sincronizar el programador.
+	if ("sincronizar".contains(nombreCampo)) {
+	    sens.setTerminar(true);
+	}
+    }
+
+    public byte[] getBufferresp() {
+	return bufferresp;
+    }
+
+}

@@ -1,0 +1,3088 @@
+package irrisoftpack;
+
+import graficaspack.grafico_cau;
+
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.EventQueue;
+import java.awt.Font;
+import java.awt.Image;
+import java.awt.Toolkit;
+import java.awt.datatransfer.DataFlavor;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.awt.event.InputEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.io.BufferedReader;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.FileReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.sql.Timestamp;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Collections;
+import java.util.Date;
+import java.util.Enumeration;
+import java.util.LinkedHashSet;
+import java.util.LinkedList;
+import java.util.Properties;
+import java.util.StringTokenizer;
+import java.util.TreeSet;
+
+import javax.swing.AbstractAction;
+import javax.swing.Action;
+import javax.swing.BorderFactory;
+import javax.swing.GroupLayout;
+import javax.swing.Icon;
+import javax.swing.ImageIcon;
+import javax.swing.JButton;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JPopupMenu;
+import javax.swing.JScrollPane;
+import javax.swing.JSeparator;
+import javax.swing.JTextPane;
+import javax.swing.SpringLayout;
+import javax.swing.SwingConstants;
+import javax.swing.SwingUtilities;
+import javax.swing.UIManager;
+import javax.swing.border.Border;
+import javax.swing.border.LineBorder;
+import javax.swing.text.BadLocationException;
+import javax.swing.text.DefaultCaret;
+import javax.swing.text.JTextComponent;
+import javax.swing.text.SimpleAttributeSet;
+import javax.swing.text.StyleConstants;
+import javax.swing.text.StyledDocument;
+import javax.swing.text.TabSet;
+import javax.swing.text.TabStop;
+
+import jssc.SerialPort;
+import jssc.SerialPortException;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.jasypt.util.text.BasicTextEncryptor;
+
+import panelespack.PanelBt2;
+import panelespack.PanelSamcla;
+import panelespack.Panelconf;
+import panelespack.Panelecturas;
+import panelespack.Panelecturasbt2;
+import panelespack.Panelecturasens;
+import panelespack.Panelecturasmci;
+import panelespack.Panelmci;
+import panelespack.Paneltest;
+import programapack.ListaProgsaexec;
+import sensorespack.HiloAmperimetro;
+import sensorespack.HiloAnemometro;
+import sensorespack.HiloCaudalimetro;
+import sensorespack.HiloHumedadSuelo;
+import sensorespack.HiloPluviometro;
+import sensorespack.HiloTemperatura;
+import sensorespack.ListaSensores;
+import sensorespack.Sensor;
+import valvulaspack.ListaValvBt2;
+import valvulaspack.ListaValvMci;
+import valvulaspack.ListaValvSamcla;
+import valvulaspack.Valvula;
+import volcadopack.Volcado;
+
+import java.awt.FlowLayout;
+import java.awt.BorderLayout;
+import java.awt.GridLayout;
+
+import javax.swing.BoxLayout;
+
+import java.awt.GridBagLayout;
+import java.awt.GridBagConstraints;
+import java.awt.Insets;
+
+import javax.swing.border.TitledBorder;
+import javax.swing.border.BevelBorder;
+
+public class Irrisoft extends Thread {
+
+    private static Logger logger = LogManager.getLogger(Irrisoft.class
+	    .getName());
+
+    // Instancia principal
+    public static Irrisoft window;
+    // Hilo principal
+    public Thread principoide;
+
+    // Ventana principal
+    public JFrame frmIrrisoft;
+    public JButton btnEmpezar;
+    // Panel Principal
+    public JPanel panelpral;
+    // Panel MCI
+    public Panelmci panelmci;
+    // Panel Bt2
+    public PanelBt2 panelbt2;
+    // Panel Samcla
+    public PanelSamcla panelsamcla;
+    // Panel Conf
+    public Panelconf panelconf;
+    // Panel Test
+    public Paneltest paneltest;
+    // Paneles Lecturas sensores
+    public Panelecturas panelecturas;
+    public Panelecturasmci panelecturasmci;
+    public Panelecturasbt2 panelecturasbt2;
+    public Panelecturasens panelecturasens;
+
+    // Gráfica
+    public grafico_cau vent_graf_cau = new grafico_cau();
+
+    // Area de texto log
+    // public JTextArea textArea;
+    public JTextPane textPane;
+    public StyledDocument doc;
+    public SimpleAttributeSet negrita, italic, normal;
+    public JScrollPane scroll;
+
+    // Estado conexiones
+    public final JLabel lblstatusl = new JLabel();
+    public final JLabel lblstatusr = new JLabel();
+    public final JLabel lblvolclocal = new JLabel();
+
+    // Estado maestras
+    public JLabel lblmaestra1;
+    public JLabel lblmaestra2;
+    // Color verde para ON
+
+    // Botón Test
+    private JButton Testbutton;
+
+    // Botones de placas
+    private JLabel imgmci, imgbt2, imgsamcla;
+
+    // /////////////////////////
+    // BBDD
+    protected ConexionDB conn;
+
+    // Hilo de escucha a la BBDD local
+    public HiloEscucha hiloescucha;
+    protected Thread hiloesc;
+
+    // Hilo Volcado
+    public Volcado volcado;
+    protected Thread hilovolcado;
+
+    // IP
+    public String ip;
+
+    // //////////////
+    // VARIABLES AUXILIARES
+    //
+    // Esta el test en ejecucion ?
+    public boolean test = false;
+    // Es el test inicial o particular?
+    public boolean inicial = false;
+    // Existe caudalimetro?
+    public boolean haycaudalimetro = false;
+    // Por ahora sólo va a haber un caudalimetro, TODO HABRÁ que cambiarlo para
+    // que se puedan poner más !!!
+    public HiloCaudalimetro hilocau;
+    // Existe amperimetro?
+    public boolean hayamperimetro = false;
+    // Existe amp en la placa de sensores???
+    // public boolean hayampplacasensores = false;
+    // Existe la placa de sensores
+    public boolean hayplacasens;
+
+    // Inicializados los puertos
+    public boolean iniports = false;
+
+    // Para las alarmas
+    // public GestorAlarmas gestorAlarma = new GestorAlarmas();
+
+    // //////////////
+    // Puertos Serie
+    protected SerialDriver serie1, serie2, serie3, serie4, serie5, serie6,
+	    serie7, serie8, seriesens, seriesamcla;
+
+    public ArrayList<SerialDriver> series = new ArrayList<SerialDriver>();
+
+    // public ArrayList<String> puertos = new ArrayList<String>();
+    // public ArrayList<String> devices = new ArrayList<String>();
+
+    // ///////////////////
+    // // SEMAFOROS para los puertos de las diferentes placas
+    public Semaforo semaforobt2, semaforobt22, semaforobt23, semaforobt24;
+    public Semaforo semaforomci, semaforomci2, semaforomci3, semaforomci4;
+    public Semaforo semaforosamcla;
+    public Semaforo semaforosens;
+
+    // /////////////////
+    // /// LISTAS
+    // public static ListaTareasaexec tareas = ListaTareasaexec.getInstance();
+    // Variable para guardar el id de la ultima tarea ejecutada o en ejecucion
+    protected int idtareaexec = -1;
+    // Lista programas
+    public ListaProgsaexec progs = ListaProgsaexec.getInstance();
+    // Listavalvulasmci
+    public ListaValvMci valvsmci, valvsmci2, valvsmci3, valvsmci4;
+    public ArrayList<String> mcicombo = new ArrayList<String>();
+    // ListavalvulasBT2
+    public ListaValvBt2 valvsbt2, valvsbt22, valvsbt23, valvsbt24;
+    public ArrayList<String> bt2combo = new ArrayList<String>();
+    // ListavalvulasSamcla
+    public ListaValvSamcla valvsamcla;
+    public ArrayList<String> samclacombo = new ArrayList<String>();
+    // ListaValvulasMaestras
+    public ArrayList<Valvula> valvsmaestras;
+    // ListaValvulasabiertas
+    public LinkedHashSet<Valvula> valvsabiertasmci, valvsabiertasmci2,
+	    valvsabiertasmci3, valvsabiertasmci4, valvsabiertasbt2,
+	    valvsabiertasbt22, valvsabiertasbt23, valvsabiertasbt24,
+	    valvsabiertasamcla, valvsabiertastot;
+    // Lista de sensores conectados
+    public LinkedList<Sensor> sensores = ListaSensores.getInstance().getsens();
+    // Flags para habilitar botonoes en panel lecturas
+    public boolean sensbt2, sensbt22, sensbt23, sensbt24, sensmci, sensmci2,
+	    sensmci3, sensmci4;
+
+    // ///////////
+    // Valvulas MAESTRAS
+    public Valvula maestra, maestra1;
+    public int maestras = 0;
+
+    // Configuración con RUTAS !!!
+    public static String home = null;
+    public static Conf config = new Conf();
+    public static final String comandoapaga = home + "/apaga.sh";
+    public static final String puertosbt = home + "/puertosbt.txt";
+
+    // Dia
+    public String hoyes;
+    public Date hoy;
+    private SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd");
+    // Fecha actual
+    public JLabel lblfecha;
+
+    // Flag de rearme de irrisoft
+    public boolean rearmar = false;
+
+    // Estados lógicos del programador
+    public boolean cancelado = false;
+    public boolean suspendido = false;
+
+    // Símbolo copyright (buuuuuuuh !!)
+    public String copyright = "\u00A9";
+
+    // Dimensiones de pantalla para IGU adaptable
+    private int altura;
+    private int anchura;
+    private JPanel panelmaestras;
+    private JLabel lblNum_prog;
+
+    // ////////////////////////////////////////////////////////////////////////////////////////
+
+    /**
+     * Launch the application.
+     */
+    public static void main(String[] args) {
+	// executor = Executors.newFixedThreadPool(20);
+	EventQueue.invokeLater(new Runnable() {
+
+	    public void run() {
+
+		// try{
+		window = new Irrisoft();
+
+		// Almaceno que día es hoy
+		window.hoyes = new Timestamp(Calendar.getInstance().getTime()
+			.getTime()).toString();
+		window.hoyes = window.hoyes.substring(0, 10);
+		try {
+		    window.hoy = window.formatter.parse(window.hoyes);
+		} catch (ParseException e) {
+		    if (logger.isErrorEnabled()) {
+			logger.error("Error al parsear la fecha: "
+				+ e.getMessage());
+		    }
+		}
+
+		window.frmIrrisoft.setVisible(true);
+
+		// Leo los puertos de la bt2
+		window.leerpuertosbt();
+
+		// Leo la configuración local archivo conf_irrisoft.txt
+		// (puertos,usuarios, host)
+		window.leerconfirri(config);
+
+		// Abro conexiones con bbdd
+		window.levantabbdd();
+		// executor.execute(window.hilovolcado);
+
+		// Asocio el devicenum con los puertos A QUITAR!
+		// window.devicenumACM();
+
+		try {
+		    Thread.sleep(1000);
+		} catch (InterruptedException e) {
+		    if (logger.isErrorEnabled()) {
+			logger.error("Error hilo interrumpido: "
+				+ e.getMessage());
+		    }
+		}
+
+		// Leo la configuración inicial de placas,maestras,asigno
+		// los puertos serie,sensores...
+
+		window.leerconfini();
+
+		// Delay de la respuesta de la BT2
+		// window.hiloescucha.connDB.serial.conectaserial(Irrisoft.config.getBt2(),
+		// 3);
+		// window.hiloescucha.connDB.serial.ponedelayresp();
+		// window.hiloescucha.connDB.serial.leeponedelayresp();
+		// //Thread.sleep(150);
+		// window.hiloescucha.connDB.serial.preguntadelayresp();
+		// window.hiloescucha.connDB.serial.leerespdelay();
+		// window.hiloescucha.connDB.serial.desconectaserial();
+
+		// }catch(Exception e){
+		// if(logger.isErrorEnabled()){
+		// logger.error(e.getMessage());
+		// }
+		// }
+	    }
+
+	});
+    }
+
+    /**
+     * Create the application.
+     */
+    public Irrisoft() {
+	initialize();
+
+    }
+
+    /**
+     * Initialize the contents of the frame.
+     */
+    private void initialize() {
+
+	Dimension screenSize = Toolkit.getDefaultToolkit().getScreenSize();
+	altura = (int) screenSize.getHeight();
+	anchura = (int) screenSize.getWidth();
+
+	frmIrrisoft = new JFrame();
+	frmIrrisoft.setIconImage(Toolkit.getDefaultToolkit().getImage(
+		Irrisoft.class.getResource(IrrisoftConstantes.IMG_GOTITA)));
+	frmIrrisoft.setTitle("I R R I S O F T");
+	frmIrrisoft.setResizable(false);
+	// frmIrrisoft.setBounds(100, 100, 879, 450);
+	frmIrrisoft.setBounds(0, 0, (int) anchura, (int) altura);
+	frmIrrisoft.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+	frmIrrisoft.getContentPane().setLayout(null);
+
+	// Pinto la cabecera
+	cabecera();
+
+	// Pinto los botones de abajo
+	principal();
+
+    }
+
+    /**
+     * CABECERA con LOGOS
+     */
+    private void cabecera() {
+
+	// Tabs del JTextPane
+	TabStop[] tabStops = new TabStop[10];
+
+	for (int pos = 0; pos < tabStops.length; pos++) {
+	    tabStops[pos] = new TabStop(pos * 30, TabStop.ALIGN_LEFT,
+		    TabStop.LEAD_DOTS);
+
+	}
+	TabSet tabSet = new TabSet(tabStops);
+
+	// Estilo negrita JTextPane
+	negrita = new SimpleAttributeSet();
+	StyleConstants.setBold(negrita, true);
+	StyleConstants.setFontFamily(negrita, "Dialog");
+	StyleConstants.setFontSize(negrita, 11);
+	StyleConstants.setTabSet(negrita, tabSet);
+
+	// Estilo italic JTextPane
+	italic = new SimpleAttributeSet();
+	StyleConstants.setItalic(italic, true);
+	StyleConstants.setFontFamily(italic, "Dialog");
+	StyleConstants.setFontSize(italic, 12);
+	StyleConstants.setTabSet(italic, tabSet);
+
+	// Estilo normal
+	normal = new SimpleAttributeSet();
+	StyleConstants.setFontFamily(normal, "Dialog");
+	StyleConstants.setFontSize(normal, 11);
+	StyleConstants.setTabSet(normal, tabSet);
+
+	// Panel de la cabecera
+	JPanel paneliconos = new JPanel();
+	paneliconos.setBorder(new LineBorder(new Color(0, 0, 0), 2));
+	paneliconos.setBackground(Color.DARK_GRAY);
+	paneliconos.setBounds(0, 0, anchura, 100);
+	paneliconos.setLayout(new GroupLayout(paneliconos));
+	frmIrrisoft.getContentPane().add(paneliconos);
+
+	JLabel imgraspi = new JLabel("", SwingConstants.TRAILING);
+	imgraspi.setBounds(0, 0, 106, 93);
+	String ruta = IrrisoftConstantes.IMG_LOGO;
+	redimensionado_jlabel(imgraspi, ruta);
+	// frmIrrisoft.getContentPane().add(imgraspi);
+	paneliconos.add(imgraspi);
+
+	JLabel imggestdropper = new JLabel("", SwingConstants.TRAILING);
+	imggestdropper.setBounds((anchura / 2) - 100, 0, 200, 96);
+	ruta = IrrisoftConstantes.IMG_GESTDROPPER;
+	redimensionado_jlabel(imggestdropper, ruta);
+	// frmIrrisoft.getContentPane().add(imggestdropper);
+	paneliconos.add(imggestdropper);
+
+	JLabel imggotita = new JLabel("", SwingConstants.TRAILING);
+	imggotita.setBounds((anchura / 2) - 200, 0, 90, 96);
+	ruta = IrrisoftConstantes.IMG_GOTITA;
+	redimensionado_jlabel(imggotita, ruta);
+	// frmIrrisoft.getContentPane().add(imggotita);
+	paneliconos.add(imggotita);
+
+	JLabel imgirrigestlife = new JLabel("", SwingConstants.TRAILING);
+	// imgirrigestlife.setBounds(481, 2, 400, 76);
+	imgirrigestlife.setBounds(anchura - 500, 2, 500, 96);
+	ruta = IrrisoftConstantes.IMG_GEST;
+	redimensionado_jlabel(imgirrigestlife, ruta);
+	// frmIrrisoft.getContentPane().add(imgirrigestlife);
+	paneliconos.add(imgirrigestlife);
+
+	// /////
+
+	scroll = new JScrollPane();
+
+	scroll.setViewportBorder(null);
+	scroll.setBounds(anchura - 495, 105, anchura - (anchura - 495),
+		altura - 130);
+	frmIrrisoft.getContentPane().add(scroll);
+	scroll.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
+	scroll.setBorder(null);
+
+	// textArea = new JTextArea();
+	textPane = new JTextPane();
+
+	textPane.setParagraphAttributes(normal, true);
+
+	doc = textPane.getStyledDocument();
+
+	scroll.setViewportView(textPane);
+	// panelpral.add(textArea);
+	textPane.setEditable(false);
+	textPane.addMouseListener(new ContextMenuMouseListener());
+	// Para que haga scrolling automaticamente !!
+	DefaultCaret caret = (DefaultCaret) textPane.getCaret();
+	caret.setUpdatePolicy(DefaultCaret.ALWAYS_UPDATE);
+	textPane.setBackground(UIManager.getColor("CheckBox.background"));
+
+	JSeparator separator_vert = new JSeparator();
+	separator_vert.setBounds(anchura - 500, 100, 1, altura - 100);
+	frmIrrisoft.getContentPane().add(separator_vert);
+	separator_vert.setOrientation(SwingConstants.VERTICAL);
+
+    }
+
+    /**
+     * Panel principal con botones de elección mci/bt2/conf/info/sensores
+     */
+    public void principal() {
+
+
+	String ruta_mci = IrrisoftConstantes.IMG_MCI;
+	String ruta_bt2 = IrrisoftConstantes.IMG_BT2;
+	String ruta_samcla = IrrisoftConstantes.IMG_SAMCLA;
+	String ruta_conf = IrrisoftConstantes.IMG_AJUSTES;
+	String ruta_info = IrrisoftConstantes.IMG_INFO;
+	
+	panelpral = new JPanel();
+	panelpral.setBounds(10, 108, 1405,
+		503);
+
+	GridBagLayout gbl_panelpral = new GridBagLayout();
+	gbl_panelpral.columnWidths = new int[] { 39, 139, 134, 0, 135, 130,
+		0, 248, 221, 41, 0 };
+	gbl_panelpral.rowHeights = new int[] { 37, 0, 0, 0, 20, 40, 0, 0, 96, 24, 87, 0 };
+	gbl_panelpral.columnWeights = new double[] { 0.0, 0.0, 0.0, 123.0, 0.0,
+		0.0, 259.0, 0.0, 0.0, 0.0, Double.MIN_VALUE };
+	gbl_panelpral.rowWeights = new double[] { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, Double.MIN_VALUE };
+	
+	panelpral.setLayout(gbl_panelpral);
+	frmIrrisoft.getContentPane().add(panelpral);
+	
+	lblNum_prog = new JLabel("");
+	lblNum_prog.setFont(new Font("Dialog", Font.BOLD, 22));
+	lblNum_prog.setBorder(new LineBorder(new Color(128, 128, 128), 3, true));
+	lblNum_prog.setHorizontalAlignment(SwingConstants.CENTER);
+	GridBagConstraints gbc_lblNum_prog = new GridBagConstraints();
+	gbc_lblNum_prog.fill = GridBagConstraints.BOTH;
+	gbc_lblNum_prog.gridheight = 5;
+	gbc_lblNum_prog.gridwidth = 2;
+	gbc_lblNum_prog.insets = new Insets(0, 0, 5, 5);
+	gbc_lblNum_prog.gridx = 1;
+	gbc_lblNum_prog.gridy = 1;
+	panelpral.add(lblNum_prog, gbc_lblNum_prog);
+	
+		lblfecha = new JLabel("");
+		lblfecha.setFont(new Font("Dialog", Font.BOLD | Font.ITALIC, 18));
+		lblfecha.setBorder(new LineBorder(new Color(128, 128, 128), 3, true));
+		lblfecha.setHorizontalAlignment(SwingConstants.CENTER);
+		lblfecha.setBounds(273, 12, 168, 35);
+		GridBagConstraints gbc_lblfecha = new GridBagConstraints();
+		gbc_lblfecha.fill = GridBagConstraints.BOTH;
+		gbc_lblfecha.gridheight = 5;
+		gbc_lblfecha.gridwidth = 2;
+		gbc_lblfecha.anchor = GridBagConstraints.WEST;
+		gbc_lblfecha.insets = new Insets(0, 0, 5, 5);
+		gbc_lblfecha.gridx = 4;
+		gbc_lblfecha.gridy = 1;
+		panelpral.add(lblfecha, gbc_lblfecha);
+					
+						JLabel lblEstado = new JLabel("BBDDLocal:");
+						lblEstado.setFont(new Font("Dialog", Font.BOLD, 10));
+						lblEstado.setBounds(29, 12, 88, 15);
+						GridBagConstraints gbc_lblEstado = new GridBagConstraints();
+						gbc_lblEstado.fill = GridBagConstraints.VERTICAL;
+						gbc_lblEstado.insets = new Insets(0, 0, 5, 5);
+						gbc_lblEstado.gridx = 7;
+						gbc_lblEstado.gridy = 2;
+						panelpral.add(lblEstado, gbc_lblEstado);
+					lblstatusl.setHorizontalAlignment(SwingConstants.CENTER);
+					lblstatusl.setFont(new Font("Dialog", Font.BOLD, 10));
+					lblstatusl.setBounds(138, 12, 103, 15);
+					GridBagConstraints gbc_lblstatusl = new GridBagConstraints();
+					gbc_lblstatusl.fill = GridBagConstraints.VERTICAL;
+					gbc_lblstatusl.insets = new Insets(0, 0, 5, 5);
+					gbc_lblstatusl.gridx = 8;
+					gbc_lblstatusl.gridy = 2;
+					panelpral.add(lblstatusl, gbc_lblstatusl);
+					lblstatusl.setText("Desconectado");
+				
+					JLabel lblvolcadolocal = new JLabel("VolcadoLocal:");
+					lblvolcadolocal.setFont(new Font("Dialog", Font.BOLD, 10));
+					lblvolcadolocal.setBounds(29, 30, 103, 15);
+					GridBagConstraints gbc_lblvolcadolocal = new GridBagConstraints();
+					gbc_lblvolcadolocal.fill = GridBagConstraints.VERTICAL;
+					gbc_lblvolcadolocal.insets = new Insets(0, 0, 5, 5);
+					gbc_lblvolcadolocal.gridx = 7;
+					gbc_lblvolcadolocal.gridy = 3;
+					panelpral.add(lblvolcadolocal, gbc_lblvolcadolocal);
+				lblvolclocal.setHorizontalAlignment(SwingConstants.CENTER);
+				lblvolclocal.setFont(new Font("Dialog", Font.BOLD, 10));
+				lblvolclocal.setText("Desconectado");
+				lblvolclocal.setBounds(139, 32, 103, 15);
+				GridBagConstraints gbc_lblvolclocal = new GridBagConstraints();
+				gbc_lblvolclocal.fill = GridBagConstraints.VERTICAL;
+				gbc_lblvolclocal.insets = new Insets(0, 0, 5, 5);
+				gbc_lblvolclocal.gridx = 8;
+				gbc_lblvolclocal.gridy = 3;
+				panelpral.add(lblvolclocal, gbc_lblvolclocal);
+			
+				JLabel lblVolcadoremoto = new JLabel("VolcadoRemoto:");
+				lblVolcadoremoto.setFont(new Font("Dialog", Font.BOLD, 10));
+				lblVolcadoremoto.setBounds(29, 48, 103, 15);
+				GridBagConstraints gbc_lblVolcadoremoto = new GridBagConstraints();
+				gbc_lblVolcadoremoto.fill = GridBagConstraints.VERTICAL;
+				gbc_lblVolcadoremoto.insets = new Insets(0, 0, 5, 5);
+				gbc_lblVolcadoremoto.gridx = 7;
+				gbc_lblVolcadoremoto.gridy = 4;
+				panelpral.add(lblVolcadoremoto, gbc_lblVolcadoremoto);
+			lblstatusr.setHorizontalAlignment(SwingConstants.CENTER);
+			lblstatusr.setFont(new Font("Dialog", Font.BOLD, 10));
+			lblstatusr.setText("Desconectado");
+			lblstatusr.setBounds(138, 48, 103, 15);
+			GridBagConstraints gbc_lblstatusr = new GridBagConstraints();
+			gbc_lblstatusr.fill = GridBagConstraints.VERTICAL;
+			gbc_lblstatusr.insets = new Insets(0, 0, 5, 5);
+			gbc_lblstatusr.gridx = 8;
+			gbc_lblstatusr.gridy = 4;
+			panelpral.add(lblstatusr, gbc_lblstatusr);
+		
+			btnEmpezar = new JButton("Arrancar");
+			btnEmpezar.setBounds(29, 75, 212, 34);
+			GridBagConstraints gbc_btnEmpezar = new GridBagConstraints();
+			gbc_btnEmpezar.gridheight = 2;
+			gbc_btnEmpezar.fill = GridBagConstraints.BOTH;
+			gbc_btnEmpezar.gridwidth = 2;
+			gbc_btnEmpezar.insets = new Insets(0, 0, 5, 5);
+			gbc_btnEmpezar.gridx = 7;
+			gbc_btnEmpezar.gridy = 5;
+			panelpral.add(btnEmpezar, gbc_btnEmpezar);
+			
+				// BOTON EMPEZAR
+				btnEmpezar.addActionListener(new ActionListener() {
+			
+				    // Empieza o para la escucha de nuevas tareas/programaciones
+			
+				    public void actionPerformed(ActionEvent arg0) {
+			
+					if (btnEmpezar.getText().contains("Arrancar")) {
+			
+					    try {
+						Thread.sleep((Irrisoft.window.volcado.con.config
+							.getTiempo() * IrrisoftConstantes.A_MSGS) / 2);
+					    } catch (InterruptedException e) {
+						if (logger.isErrorEnabled()) {
+						    logger.error("Hilo interrumpido: " + e.getMessage());
+						}
+					    }
+					    //
+					    window.levantabbdd();
+			
+					} else {
+					    cierraDBhilo();
+					    hiloescucha.setTerminar(true);
+					    volcado.setTerminar(true);
+			
+					    try {
+						Thread.sleep((Irrisoft.window.volcado.con.config
+							.getTiempo() * IrrisoftConstantes.A_MSGS) / 2);
+					    } catch (InterruptedException e) {
+						if (logger.isErrorEnabled()) {
+						    logger.error("Hilo interrumpido: " + e.getMessage());
+						}
+					    }
+					    // Invoco al garbage collector para liberar memoria !!
+					    Runtime r = Runtime.getRuntime();
+					    r.gc();
+			
+					}
+				    }
+				});
+	
+		panelmaestras = new JPanel();
+		panelmaestras.setBorder(new TitledBorder(null, "Maestras",
+			TitledBorder.LEADING, TitledBorder.TOP, null, null));
+		panelmaestras.setLayout(null);
+		GridBagConstraints gbc_panelmaestras = new GridBagConstraints();
+		gbc_panelmaestras.gridheight = 3;
+		gbc_panelmaestras.gridwidth = 5;
+		gbc_panelmaestras.fill = GridBagConstraints.BOTH;
+		gbc_panelmaestras.insets = new Insets(0, 0, 5, 5);
+		gbc_panelmaestras.gridx = 1;
+		gbc_panelmaestras.gridy = 6;
+		panelpral.add(panelmaestras, gbc_panelmaestras);
+		
+			lblmaestra1 = new JLabel("Válvula Maestra 1: OFF");
+			panelmaestras.add(lblmaestra1);
+			lblmaestra1.setForeground(Color.RED);
+			lblmaestra1.setBorder(new BevelBorder(BevelBorder.LOWERED, null, null, null, null));
+			lblmaestra1.setHorizontalAlignment(SwingConstants.CENTER);
+			lblmaestra1.setFont(new Font("Dialog", Font.BOLD, 12));
+			lblmaestra1.setBounds(107, 43, 180, 39);
+			
+				lblmaestra2 = new JLabel("Válvula Maestra 2: OFF");
+				panelmaestras.add(lblmaestra2);
+				lblmaestra2.setForeground(Color.RED);
+				lblmaestra2.setBorder(new BevelBorder(BevelBorder.LOWERED, null, null, null, null));
+				lblmaestra2.setHorizontalAlignment(SwingConstants.CENTER);
+				lblmaestra2.setFont(new Font("Dialog", Font.BOLD, 12));
+				lblmaestra2.setBounds(369, 43, 180, 39);
+
+	Testbutton = new JButton("Testeos");
+	Testbutton.setBounds(0, 0, 100, 10);
+	Testbutton.setHorizontalTextPosition(SwingConstants.CENTER);
+	Testbutton.setVerticalTextPosition(SwingConstants.BOTTOM);
+	GridBagConstraints gbc_Testbutton = new GridBagConstraints();
+	gbc_Testbutton.fill = GridBagConstraints.BOTH;
+	gbc_Testbutton.gridwidth = 2;
+	gbc_Testbutton.insets = new Insets(0, 0, 5, 5);
+	gbc_Testbutton.gridx = 7;
+	gbc_Testbutton.gridy = 8;
+	Testbutton.setMinimumSize(Testbutton.getMinimumSize());
+	redimensionado_icono(Testbutton,
+		"/irrisoftpack/imagenes/test.png");
+	
+	panelpral.add(Testbutton, gbc_Testbutton);
+	Testbutton.addActionListener(new ActionListener() {
+	    public void actionPerformed(ActionEvent arg0) {
+		// Aki se llama al panel de TEST
+		paneltest = Paneltest.getInstance();
+		panelpral.setVisible(false);
+		// paneltest.repaint();
+		frmIrrisoft.getContentPane().add(paneltest);
+	    }
+	});
+
+	// Configuración
+	JLabel imgconf = new JLabel("");
+	imgconf.setHorizontalAlignment(SwingConstants.CENTER);
+	imgconf.addMouseListener(new MouseAdapter() {
+	    @Override
+	    public void mouseClicked(MouseEvent e) {
+		// Aki se llama al panel de configuración
+		panelconf = Panelconf.getInstance();
+		panelpral.setVisible(false);
+		panelconf.repaint();
+		frmIrrisoft.getContentPane().add(panelconf);
+	    }
+	});
+
+	// Placa Samcla
+	imgsamcla = new JLabel("");
+	imgsamcla.setHorizontalAlignment(SwingConstants.CENTER);
+	imgsamcla.addMouseListener(new MouseAdapter() {
+	    @Override
+	    public void mouseClicked(MouseEvent e) {
+
+		if (Irrisoft.window.valvsamcla != null) {
+		    // version firm bt
+		    // panelsamcla.lblver.setText("Firmware ver: "
+		    // + Irrisoft.window.serie5.ver);
+		    // Aki se llama al panelbt2
+		    panelpral.setVisible(false);
+		    panelsamcla.repaint();
+		    frmIrrisoft.getContentPane().add(panelsamcla);
+		    panelsamcla.setVisible(true);
+		}
+	    }
+	});
+
+	// Placa Bt2
+	imgbt2 = new JLabel("");
+	imgbt2.setHorizontalAlignment(SwingConstants.CENTER);
+	imgbt2.addMouseListener(new MouseAdapter() {
+	    @Override
+	    public void mouseClicked(MouseEvent e) {
+
+		if (Irrisoft.window.valvsbt2 != null) {
+		    // version firm bt
+		    panelbt2.lblver.setText("Firmware ver: "
+			    + Irrisoft.window.serie5.ver);
+		    // Aki se llama al panelbt2
+		    panelpral.setVisible(false);
+		    panelbt2.repaint();
+		    frmIrrisoft.getContentPane().add(panelbt2);
+		    panelbt2.setVisible(true);
+		}
+	    }
+	});
+
+	// Placa mci
+	imgmci = new JLabel("");
+	imgmci.setHorizontalAlignment(SwingConstants.CENTER);
+	imgmci.addMouseListener(new MouseAdapter() {
+	    @Override
+	    public void mouseClicked(MouseEvent e) {
+
+		if (Irrisoft.window.valvsmci != null) {
+		    // Aki se llama al panelmci
+		    panelpral.setVisible(false);
+		    panelmci.repaint();
+		    frmIrrisoft.getContentPane().add(panelmci);
+		    panelmci.setVisible(true);
+		}
+	    }
+	});
+	
+	JLabel lblNewLabel_1 = new JLabel("");
+	GridBagConstraints gbc_lblNewLabel_1 = new GridBagConstraints();
+	gbc_lblNewLabel_1.insets = new Insets(0, 0, 5, 5);
+	gbc_lblNewLabel_1.gridx = 3;
+	gbc_lblNewLabel_1.gridy = 9;
+	panelpral.add(lblNewLabel_1, gbc_lblNewLabel_1);
+
+	imgmci.setBounds(0, 0, 125, 65);
+	redimensionado_jlabel(imgmci, ruta_mci);
+	GridBagConstraints gbc_imgmci = new GridBagConstraints();
+	gbc_imgmci.fill =  GridBagConstraints.BOTH;
+	gbc_imgmci.anchor = GridBagConstraints.WEST;
+	gbc_imgmci.insets = new Insets(0, 0, 0, 5);
+	gbc_imgmci.gridx = 1;
+	gbc_imgmci.gridy = 10;
+	panelpral.add(imgmci, gbc_imgmci);
+
+	imgbt2.setBounds(0, 0, 125, 65);
+	redimensionado_jlabel(imgbt2, ruta_bt2);
+	GridBagConstraints gbc_imgbt2 = new GridBagConstraints();
+	gbc_imgbt2.fill =  GridBagConstraints.BOTH;;
+	gbc_imgbt2.anchor = GridBagConstraints.WEST;
+	gbc_imgbt2.insets = new Insets(0, 0, 0, 5);
+	gbc_imgbt2.gridx = 2;
+	gbc_imgbt2.gridy = 10;
+	panelpral.add(imgbt2, gbc_imgbt2);
+
+	imgsamcla.setBounds(0, 0, 90, 40);
+	redimensionado_jlabel(imgsamcla, ruta_samcla);
+	GridBagConstraints gbc_imgsamcla = new GridBagConstraints();
+	gbc_imgsamcla.fill =  GridBagConstraints.BOTH;
+	gbc_imgsamcla.insets = new Insets(0, 0, 0, 5);
+	gbc_imgsamcla.gridx = 3;
+	gbc_imgsamcla.gridy = 10;
+	panelpral.add(imgsamcla, gbc_imgsamcla);
+	imgconf.setBounds(0, 0, 80, 80);
+	redimensionado_jlabel(imgconf, ruta_conf);
+	GridBagConstraints gbc_imgconf = new GridBagConstraints();
+	gbc_imgconf.fill = GridBagConstraints.BOTH;
+	gbc_imgconf.anchor = GridBagConstraints.WEST;
+	gbc_imgconf.insets = new Insets(0, 0, 0, 5);
+	gbc_imgconf.gridx = 4;
+	gbc_imgconf.gridy = 10;
+	panelpral.add(imgconf, gbc_imgconf);
+
+	// Acerca de
+	JLabel imginfo = new JLabel("");
+	imginfo.setHorizontalAlignment(SwingConstants.CENTER);
+	imginfo.addMouseListener(new MouseAdapter() {
+	    @Override
+	    public void mouseClicked(MouseEvent e) {
+		// Info
+		JOptionPane
+			.showMessageDialog(
+				Irrisoft.window.frmIrrisoft,
+				"Irrisoft version "
+					+ IrrisoftConstantes.VERSION
+					+ "\nPrograma que gestiona el riego automático integrado en un SIG/GIS.\n\nAutores:   Mikel Merino <astrapotro@gmail.com>\n                   Alberto Díez <alberto.diez.lejarazu@gmail.com>\n                   Diego Alonso <diego.alonso.gonzalez@gmail.com>\n\nTodos los derechos reservados 2013 "
+					+ copyright + "\n\n", "Acerca de ...",
+				JOptionPane.INFORMATION_MESSAGE);
+	    }
+	});
+	imginfo.setBounds(0, 0, 50, 50);
+	redimensionado_jlabel(imginfo, ruta_info);
+	GridBagConstraints gbc_imginfo = new GridBagConstraints();
+	gbc_imginfo.fill = GridBagConstraints.BOTH;
+	gbc_imginfo.anchor = GridBagConstraints.WEST;
+	gbc_imginfo.insets = new Insets(0, 0, 0, 5);
+	gbc_imginfo.gridx = 5;
+	gbc_imginfo.gridy = 10;
+	panelpral.add(imginfo, gbc_imginfo);
+
+	JButton botonsensores = new JButton("Lecturas Sensores");
+	botonsensores.setHorizontalTextPosition(SwingConstants.CENTER);
+	botonsensores.setVerticalTextPosition(SwingConstants.BOTTOM);
+	botonsensores.setBounds(0, 0, 100, 10);
+	botonsensores.setMinimumSize(botonsensores.getMinimumSize());
+	redimensionado_icono(botonsensores,
+		"/irrisoftpack/imagenes/sensores.png");
+	GridBagConstraints gbc_botonsensores = new GridBagConstraints();
+	gbc_botonsensores.insets = new Insets(0, 0, 0, 5);
+	gbc_botonsensores.gridwidth = 2;
+	gbc_botonsensores.fill = GridBagConstraints.BOTH;
+	gbc_botonsensores.gridx = 7;
+	gbc_botonsensores.gridy = 10;
+	panelpral.add(botonsensores, gbc_botonsensores);
+
+	botonsensores.addMouseListener(new MouseAdapter() {
+	    @Override
+	    public void mouseClicked(MouseEvent e) {
+
+		// Aki se llama al panelecturas
+		panelpral.setVisible(false);
+		panelecturas.repaint();
+		frmIrrisoft.getContentPane().add(panelecturas);
+		panelecturas.setVisible(true);
+
+	    }
+	});
+
+    }
+
+    /**
+     * Redimensionado jlabels
+     * 
+     * @param jlabel
+     * @param ruta
+     */
+    public void redimensionado_jlabel(JLabel jlabel, String ruta) {
+	ImageIcon img = new ImageIcon(Irrisoft.class.getResource(ruta));
+	Icon icono = new ImageIcon(img.getImage().getScaledInstance(
+		jlabel.getWidth(), jlabel.getHeight(), Image.SCALE_SMOOTH));
+	jlabel.setIcon(icono);
+    }
+
+    /**
+     * Redimensionado iconos botones
+     * 
+     * @param jlabel
+     * @param ruta
+     */
+    public void redimensionado_icono(JButton boton, String ruta) {
+	Image img = new ImageIcon(Irrisoft.class.getResource(ruta)).getImage();
+	Image newimg = img.getScaledInstance(boton.getWidth() / 2,
+		(boton.getWidth() / 2), java.awt.Image.SCALE_SMOOTH);
+	boton.setIcon(new ImageIcon(newimg));
+    }
+
+    /**
+     * Levanta las BBDD Local y Remota
+     */
+    public void levantabbdd() {
+
+	// Abro HILOESCUCHA
+	window.hiloescucha = new HiloEscucha();
+	window.hiloesc = new Thread(window.hiloescucha);
+	window.hiloesc.setName("HiloEscucha " + window.hiloesc.getId());
+	window.hiloesc.start();
+
+	// Abro VOLCADO
+	window.volcado = new Volcado();
+	window.hilovolcado = new Thread(window.volcado);
+	window.hilovolcado.setName("Volcado " + window.hilovolcado.getId());
+	window.hilovolcado.start();
+
+	hiloescucha.setTerminar(false);
+	volcado.setTerminar(false);
+
+    }
+
+    /**
+     * METODO REALIZADO PARA ARCHIVO CONFIGURACION.PROPERTIES Leo el archivo
+     * Irrisoft.properties
+     * 
+     * @param config
+     */
+    public void leerconfirri(Conf config) {
+	Properties propiedades = new Properties() {
+	    @Override
+	    public synchronized Enumeration<Object> keys() {
+		return Collections.enumeration(new TreeSet<Object>(super
+			.keySet()));
+	    }
+	};
+	InputStream lecturaIrrisoft = null;
+	BasicTextEncryptor textIrri = new BasicTextEncryptor();
+	String a, b, c = null;
+
+	try {
+
+	    lecturaIrrisoft = new FileInputStream("Irrisoft.properties");
+	    propiedades.load(lecturaIrrisoft);
+	    lecturaIrrisoft.close();
+
+	    config.setIdrasp(propiedades.getProperty("Aparato.ID"));
+	    config.setCorreo(propiedades.getProperty("CORREO"));
+	    config.setHost(propiedades.getProperty("Local.Conexion.HOST"));
+	    config.setPuerto(Integer.parseInt(propiedades
+		    .getProperty("Local.Conexion.PUERTO")));
+	    config.setDb(propiedades.getProperty("Local.Conexion.DB"));
+	    config.setUsuario(propiedades.getProperty("Local.Login.USUARIO"));
+
+	    config.setLimitebt(Integer.parseInt(propiedades
+		    .getProperty("BT2.limitebt")));
+
+	    if (propiedades.getProperty("Senal.FLAG").equals("si")) {
+		// Coloco el password
+		textIrri.setPassword(IrrisoftConstantes.PASSWORD);
+		// Cifro el flag que utilizo
+		a = textIrri.encrypt(propiedades.getProperty("Senal.FLAG"));
+		propiedades.setProperty("Senal.FLAG", a);
+		// // Cifro la contraseña de Irrisoft.
+		config.setPass(propiedades.getProperty("Local.Login.PASS"));
+		b = textIrri.encrypt(propiedades
+			.getProperty("Local.Login.PASS"));
+		propiedades.setProperty("Local.Login.PASS", b);
+		// Guardo en el archivo de salida
+		OutputStream osIrri = new FileOutputStream(
+			"Irrisoft.properties");
+		propiedades.store(osIrri, null);
+		osIrri.close();
+	    } else {
+		textIrri.setPassword(IrrisoftConstantes.PASSWORD);
+		// Descifro la contraseña en memoria.
+		c = textIrri.decrypt(propiedades
+			.getProperty("Local.Login.PASS"));
+		propiedades.setProperty("Local.Login.PASS", c);
+		config.setPass(propiedades.getProperty("Local.Login.PASS"));
+		b = textIrri.encrypt(propiedades
+			.getProperty("Local.Login.PASS"));
+		propiedades.setProperty("Local.Login.PASS", b);
+
+		// Guardo en el archivo de salida
+		OutputStream osIrri = new FileOutputStream(
+			"Irrisoft.properties");
+		propiedades.store(osIrri, null);
+		osIrri.close();
+
+	    }
+
+	} catch (FileNotFoundException e) {
+	    if (logger.isErrorEnabled()) {
+		logger.error("No existe el fichero de configuración !! \n Se sale !");
+		logger.error(e.getMessage());
+	    }
+	} catch (IOException e) {
+	    if (logger.isErrorEnabled()) {
+		logger.error("No se ha podido leer el archivo !! \n Se sale !");
+		logger.error(e.getMessage());
+	    }
+	}
+	
+	//Pongo el num programador en el Jlabel del panel principal
+	
+	this.lblNum_prog.setText("Programador  "+config.getIdrasp());
+    }
+
+    /**
+     * Lee los puertos de la bt2 (ftdi) del archivo previamente guardado en el
+     * arranque de la sbc
+     */
+    public void leerpuertosbt() {
+
+	FileReader fr = null;
+	String linea = null;
+	// int i=0;
+	String aux = null;
+
+	try {
+	    fr = new FileReader(puertosbt); // Ruta al archivo de configuración
+
+	} catch (FileNotFoundException e1) {
+	    if (logger.isErrorEnabled()) {
+		logger.error(e1.getMessage());
+	    }
+	    try {
+		Irrisoft.window.textPane
+			.getStyledDocument()
+			.insertString(
+				doc.getLength(),
+				("No existe el fichero de los puertos bt2 :\n" + puertosbt),
+				null);
+	    } catch (BadLocationException e) {
+		if (logger.isErrorEnabled()) {
+		    logger.error(e.getMessage());
+		}
+	    }
+
+	    if (logger.isWarnEnabled()) {
+		logger.warn("No existe el fichero de los puertos bt2:\n"
+			+ puertosbt);
+	    }
+	}
+	BufferedReader bf = null;
+	try {
+	    bf = new BufferedReader(fr);
+	} catch (Exception e1) {
+	    if (logger.isErrorEnabled()) {
+		logger.error(e1.getMessage());
+	    }
+	}
+	//
+	// Leo línea línea el fichero de puertos
+	//
+
+	try {
+	    ArrayList<String> puertosbt2 = new ArrayList<String>();
+	    ArrayList<String> puertosmci = new ArrayList<String>();
+	    ArrayList<String> puertosSens = new ArrayList<String>();
+
+	    while ((linea = bf.readLine()) != null) {
+
+		// El script puertosbt.sh me pone un espacio al final !! yo se
+		// lo quito
+		if (linea.contains("ftdi")) {
+		    aux = linea.substring(0, 5);
+		    puertosbt2.add(aux);
+		} else if (linea.contains("placa_controladora")) {
+		    aux = linea.substring(0, 19);
+		    puertosmci.add(aux);
+		} else if (linea.contains("placa_sensores")) {
+		    aux = linea.substring(0, 14);
+		    puertosSens.add(aux);
+
+		}
+
+	    }
+
+	    Collections.sort(puertosbt2);
+	    Collections.sort(puertosmci);
+	    Collections.sort(puertosSens);
+
+	    // // Asigno los puertos bt2
+	    for (int z = 0; z < puertosbt2.size(); z++) {
+		if (z == 0) {
+		    config.setBt2("/dev/" + puertosbt2.get(0));
+		} else if (z == 1) {
+		    config.setBt22("/dev/" + puertosbt2.get(1));
+		} else if (z == 2) {
+		    config.setBt23("/dev/" + puertosbt2.get(2));
+		} else if (z == 3) {
+		    config.setBt24("/dev/" + puertosbt2.get(3));
+		}
+	    }
+	    // Asigno los puertos mci
+	    for (int z = 0; z < puertosmci.size(); z++) {
+		if (z == 0)
+		    config.setMci("/dev/" + puertosmci.get(0));
+		else if (z == 1)
+		    config.setMci2("/dev/" + puertosmci.get(1));
+		else if (z == 2)
+		    config.setMci3("/dev/" + puertosmci.get(2));
+		else if (z == 3)
+		    config.setMci4("/dev/" + puertosmci.get(3));
+	    }
+	    // // Asigno los puertos Sens
+	    for (int z = 0; z < puertosSens.size(); z++) {
+		if (z == 0)
+		    config.setSens("/dev/" + puertosSens.get(0));
+	    }
+
+	    // Borro las listas
+	    puertosbt2 = null;
+	    puertosmci = null;
+	    puertosSens = null;
+
+	} catch (IOException e1) {
+	    if (logger.isErrorEnabled()) {
+		logger.error(e1.getMessage());
+	    }
+	}
+	if (logger.isInfoEnabled()) {
+	    logger.info("Mci: " + config.getMci());
+	    logger.info("Mci2: " + config.getMci2());
+	    logger.info("Mci3: " + config.getMci3());
+	    logger.info("Mci4: " + config.getMci4());
+	    logger.info("BT2: " + config.getBt2());
+	    logger.info("BT22: " + config.getBt22());
+	    logger.info("BT23: " + config.getBt23());
+	    logger.info("BT24: " + config.getBt24());
+	    logger.info("Sens: " + config.getSens());
+	}
+	try {
+	    fr.close();
+	    bf.close();
+
+	} catch (Exception e) {
+	    if (logger.isErrorEnabled()) {
+		logger.error("No se ha podido cerrar la lectura de archivo !!");
+		logger.error(e.getMessage());
+	    }
+	}
+
+    }
+
+    /**
+     * Abro conexión y me pongo a escuchar automáticamente a la local en otro
+     * hilo dedicado exclusivamente a ello.
+     */
+    protected void llamaescucha() {
+
+    }
+
+    /**
+     * Leo las configuraciones iniciales de los programadores
+     * 
+     * @throws SQLException
+     * @throws NumberFormatException
+     */
+    public void leerconfini() {
+
+	// Cierro todos las conexiones serie
+	comprobarSerie();
+
+	// Configuración inicial Valvulas
+	leerconf_ini_prog();
+
+	// Configuración inicial sensores
+	leerconf_ini_sens();
+
+	Irrisoft.window.rearmar = false;
+
+	// instancio los paneles de lecturas de sensores
+	window.panelecturas = Panelecturas.getInstance();
+	window.panelecturas.habilitabotones();
+
+	// Miro las bt2 abiertas
+	mirarAbiertasbt();
+
+    }
+
+    /**
+     * Miro las valvulas BT abiertas que hay.
+     */
+    private void mirarAbiertasbt() {
+
+	if (valvsbt2 != null) {
+	    serie5.cerrarAbiertasAlInicio(serie5.serialPort, 5);
+	}
+	if (valvsbt22 != null) {
+	    serie6.cerrarAbiertasAlInicio(serie6.serialPort, 6);
+	}
+	if (valvsbt23 != null) {
+	    serie7.cerrarAbiertasAlInicio(serie7.serialPort, 7);
+	}
+	if (valvsbt24 != null) {
+	    serie8.cerrarAbiertasAlInicio(serie8.serialPort, 8);
+	}
+
+    }
+
+    /**
+     * Leo la configuracion inicial de los programadores, las valvulas que
+     * tienen asociadas.
+     * 
+     * @throws SQLException
+     * @throws NumberFormatException
+     */
+    private void leerconf_ini_prog() {
+
+	// TODO A REVISAR (hacer como en leerconf_ini_sens, creando un objeto y
+	// asignandole directamente los campos)
+
+	if (valvsabiertastot == null)
+	    valvsabiertastot = new LinkedHashSet<Valvula>();
+
+	// Limpio las listas y los flags
+
+	bt2combo.clear();
+	mcicombo.clear();
+	this.maestra = null;
+	this.maestra1 = null;
+	this.maestras = 0;
+
+	if (valvsbt2 != null)
+	    valvsbt2.getvalvulas().clear();
+	if (valvsbt22 != null)
+	    valvsbt22.getvalvulas().clear();
+	if (valvsbt23 != null)
+	    valvsbt23.getvalvulas().clear();
+	if (valvsbt24 != null)
+	    valvsbt24.getvalvulas().clear();
+	if (valvsmci != null)
+	    valvsmci.getvalvulas().clear();
+	if (valvsmci2 != null)
+	    valvsmci2.getvalvulas().clear();
+	if (valvsmci3 != null)
+	    valvsmci3.getvalvulas().clear();
+	if (valvsmci4 != null)
+	    valvsmci4.getvalvulas().clear();
+	if (valvsamcla != null)
+	    valvsamcla.getvalvulas().clear();
+
+	valvsmci = null;
+	valvsmci2 = null;
+	valvsmci3 = null;
+	valvsmci4 = null;
+	valvsbt2 = null;
+	valvsbt22 = null;
+	valvsbt23 = null;
+	valvsbt24 = null;
+	valvsamcla = null;
+	valvsmaestras = null;
+
+	conn.leerconf_ini_prog();
+
+	// Lo dejo aki porque los métodos de las maestras residen en ese panel (
+	// A CAMBIAR !!! TODO)
+	window.panelbt2 = PanelBt2.getInstance();
+	// Desactivo los botones de las placas si no hay válvulas
+	// correspondientes e instancio los paneles correspondientes
+	if (valvsmci == null)
+	    imgmci.setEnabled(false);
+	else {
+	    window.panelmci = Panelmci.getInstance();
+	    // Cargo la lista de iconos valvulas mci!
+	    window.panelmci.pintavalvsmci();
+	    imgmci.setEnabled(true);
+	}
+	if (valvsbt2 == null)
+	    imgbt2.setEnabled(false);
+	else {
+
+	    imgbt2.setEnabled(true);
+	}
+	if (valvsamcla == null)
+	    imgsamcla.setEnabled(false);
+	else {
+	    window.panelsamcla = PanelSamcla.getInstance();
+	    imgsamcla.setEnabled(true);
+	}
+    }
+
+    /**
+     * Pongo la configuracion de las BT2
+     * 
+     * @param valvsbt
+     * @param i
+     * @param valv
+     * @param deco
+     * @param maes
+     * @param latx
+     * @param goteo
+     * @param numplac
+     */
+    public void ponerconfBT(ListaValvBt2 valvsbt, int i, String valv, int deco,
+	    int maes, int latx, int goteo, int numplac) {
+
+	valvsbt.addvalvbt2(new Valvula());
+	valvsbt.getvalvbt2(i).setAbierta(false);
+	valvsbt.getvalvbt2(i).setCodelecvalv(valv);
+	valvsbt.getvalvbt2(i).setDeco(deco);
+	valvsbt.getvalvbt2(i).setMaestra(maes);
+	valvsbt.getvalvbt2(i).setLatch(latx);
+	valvsbt.getvalvbt2(i).setGoteo(goteo);
+
+	conn.recogeconsummod(i, valv);
+
+	if (valvsbt.getvalvbt2(i).isMaestra() == 1) {
+	    if (maestra == null) {
+
+		maestra = new Valvula();
+		maestra = valvsbt.getvalvbt2(i);
+		valvsmaestras = new ArrayList<Valvula>();
+		valvsmaestras.add(maestra);
+		maestras++;
+
+	    } else if (maestra1 == null) {
+		maestra1 = new Valvula();
+		maestra1 = valvsbt.getvalvbt2(i);
+		valvsmaestras.add(maestra1);
+		maestras++;
+	    }
+	} else
+	    bt2combo.add(valvsbt.getvalvbt2(i).getCodelecvalv());
+
+	if (numplac == 5) {
+	    valvsbt.getvalvbt2(i).setNum_placa(5);
+	    valvsbt.getvalvbt2(i).setPuerto(Irrisoft.config.getBt2());
+	    valvsbt.getvalvbt2(i).setSemaforo(semaforobt2);
+	    valvsbt.getvalvbt2(i).setSerie(serie5);
+	    valvsabiertasbt2 = new LinkedHashSet<Valvula>();
+
+	}
+	if (numplac == 6) {
+	    valvsbt.getvalvbt2(i).setNum_placa(6);
+	    valvsbt.getvalvbt2(i).setPuerto(Irrisoft.config.getBt22());
+	    valvsbt.getvalvbt2(i).setSemaforo(semaforobt22);
+	    valvsbt.getvalvbt2(i).setSerie(serie6);
+	    valvsabiertasbt22 = new LinkedHashSet<Valvula>();
+
+	}
+	if (numplac == 7) {
+	    valvsbt.getvalvbt2(i).setNum_placa(7);
+	    valvsbt.getvalvbt2(i).setPuerto(Irrisoft.config.getBt23());
+	    valvsbt.getvalvbt2(i).setSemaforo(semaforobt23);
+	    valvsbt.getvalvbt2(i).setSerie(serie7);
+	    valvsabiertasbt23 = new LinkedHashSet<Valvula>();
+
+	}
+	if (numplac == 8) {
+	    valvsbt.getvalvbt2(i).setNum_placa(8);
+	    valvsbt.getvalvbt2(i).setPuerto(Irrisoft.config.getBt24());
+	    valvsbt.getvalvbt2(i).setSemaforo(semaforobt24);
+	    valvsbt.getvalvbt2(i).setSerie(serie8);
+	    valvsabiertasbt24 = new LinkedHashSet<Valvula>();
+	}
+
+	// //Si tengo alguna LATCH tengo que bajar la sensibilidad de la BT2 a
+	// 30mA (comando 10H),
+	// // y cambiar el tipo de decoder a 2 Aquative plus o a un supuesto 3
+	// (comando 13H)
+
+    }
+
+    /**
+     * Pongo la configuracion de las MCI
+     * 
+     * @param valvsmulti
+     * @param i
+     * @param valv
+     * @param maes
+     * @param latx
+     * @param goteo
+     * @param numplac
+     */
+    public void ponerconfMCI(ListaValvMci valvsmulti, int i, String valv,
+	    int maes, int latx, int goteo, int numplac) {
+
+	valvsmulti.addvalvmci(new Valvula());
+	valvsmulti.getvalvmci(i).setAbierta(false);
+	valvsmulti.getvalvmci(i).setCodelecvalv(valv);
+	valvsmulti.getvalvmci(i).setMaestra(maes);
+	valvsmulti.getvalvmci(i).setLatch(latx);
+	valvsmulti.getvalvmci(i).setGoteo(goteo);
+
+	if (valvsmulti.getvalvmci(i).isMaestra() == 1) {
+	    if (maestra == null) {
+
+		maestra = new Valvula();
+		maestra = valvsmulti.getvalvmci(i);
+		valvsmaestras = new ArrayList<Valvula>();
+		valvsmaestras.add(maestra);
+		maestras++;
+
+	    } else if (maestra1 == null) {
+		maestra1 = new Valvula();
+		maestra1 = valvsmulti.getvalvmci(i);
+		valvsmaestras.add(maestra1);
+		maestras++;
+
+	    }
+	} else
+	    mcicombo.add(valvsmulti.getvalvmci(i).getCodelecvalv());
+
+	if (numplac == 1) {
+	    valvsmulti.getvalvmci(i).setNum_placa(1);
+	    valvsmulti.getvalvmci(i).setPuerto(Irrisoft.config.getMci());
+	    valvsmulti.getvalvmci(i).setSemaforo(semaforomci);
+	    valvsmulti.getvalvmci(i).setSerie(serie1);
+	    valvsabiertasmci = new LinkedHashSet<Valvula>();
+	}
+	if (numplac == 2) {
+	    valvsmulti.getvalvmci(i).setNum_placa(2);
+	    valvsmulti.getvalvmci(i).setPuerto(Irrisoft.config.getMci2());
+	    valvsmulti.getvalvmci(i).setSemaforo(semaforomci2);
+	    valvsmulti.getvalvmci(i).setSerie(serie2);
+	    valvsabiertasmci2 = new LinkedHashSet<Valvula>();
+	}
+	if (numplac == 3) {
+	    valvsmulti.getvalvmci(i).setNum_placa(3);
+	    valvsmulti.getvalvmci(i).setPuerto(Irrisoft.config.getMci3());
+	    valvsmulti.getvalvmci(i).setSemaforo(semaforomci3);
+	    valvsmulti.getvalvmci(i).setSerie(serie3);
+	    valvsabiertasmci3 = new LinkedHashSet<Valvula>();
+	}
+	if (numplac == 4) {
+	    valvsmulti.getvalvmci(i).setNum_placa(4);
+	    valvsmulti.getvalvmci(i).setPuerto(Irrisoft.config.getMci4());
+	    valvsmulti.getvalvmci(i).setSemaforo(semaforomci4);
+	    valvsmulti.getvalvmci(i).setSerie(serie4);
+	    valvsabiertasmci4 = new LinkedHashSet<Valvula>();
+	}
+
+	conn.recogeconsummod(i, valv);
+
+    }
+
+    /**
+     * Pongo la configuracion de las MCI
+     * 
+     * @param valvsmulti
+     * @param i
+     * @param valv
+     * @param maes
+     * @param latx
+     * @param goteo
+     * @param numplac
+     */
+    public void ponerconfSamcla(ListaValvSamcla valvs, int i, String valv,
+	    int deco, int maes, int latx, int goteo, int numplac, Long serie) {
+
+	valvs.addvalvsamcla(new Valvula());
+	valvs.getvalvsamcla(i).setAbierta(false);
+	valvs.getvalvsamcla(i).setCodelecvalv(valv);
+	valvs.getvalvsamcla(i).setMaestra(maes);
+	valvs.getvalvsamcla(i).setLatch(latx);
+	valvs.getvalvsamcla(i).setGoteo(goteo);
+	valvs.getvalvsamcla(i).setNumserie(serie);
+
+	if (valvsamcla.getvalvsamcla(i).isMaestra() == 1) {
+	    if (maestra == null) {
+		maestra = new Valvula();
+		maestra = valvsamcla.getvalvsamcla(i);
+		valvsmaestras = new ArrayList<Valvula>();
+		valvsmaestras.add(maestra);
+		maestras++;
+
+	    } else if (maestra1 == null) {
+		maestra1 = new Valvula();
+		maestra1 = valvsamcla.getvalvsamcla(i);
+		valvsmaestras.add(maestra1);
+		maestras++;
+
+	    }
+	} else
+	    samclacombo.add(valvs.getvalvsamcla(i).getCodelecvalv());
+
+	valvsamcla.getvalvsamcla(i).setNum_placa(-11);
+	// valvsamcla.getvalvsamcla(i).setPuerto(Irrisoft.config.getMci());
+	valvsamcla.getvalvsamcla(i).setSemaforo(semaforosamcla);
+	// valvsamcla.getvalvsamcla(i).setSerie(serie1);
+	valvsabiertasamcla = new LinkedHashSet<Valvula>();
+
+	conn.recogeconsummod(i, valv);
+
+    }
+
+    /**
+     * Leo la configuracion de sensores del programador.
+     * 
+     * @throws SQLException
+     */
+    private void leerconf_ini_sens() {
+
+	// Limpio lista de sensores
+	sensores.clear();
+	// ponngo a false los flags de sensores
+	Irrisoft.window.hayplacasens = false;
+	Irrisoft.window.haycaudalimetro = false;
+	sensmci = false;
+	sensmci2 = false;
+	sensmci3 = false;
+	sensmci4 = false;
+	sensbt2 = false;
+	sensbt22 = false;
+	sensbt23 = false;
+	sensbt24 = false;
+
+	// /////////////////////////////////
+	// SENSOR FANTASMA DE AMPERIMETRO para placas mci de Jaime (a quitar)
+	// !!!!
+	// int lastghost = 0;
+	// if (placas != null && !hayampplacasensores) {
+	// for (int i = 0; i < placas.getsizeof(); i++) {
+	// Sensor sens = new Sensor();
+	// sens.setCodprog(Irrisoft.config.getIdrasp());
+	// sens.setNum_placa(i + 1);
+	// sens.setTipo(3);
+	// sens.setghost(true);
+	// sensores.add(sens);
+	// hilos_sens_ghost(i);
+	// }
+	// lastghost = placas.getsizeof();
+	// }
+
+	conn.leerconf_ini_sens();
+
+	for (int i = 0; i < sensores.size(); i++) {
+	    if (logger.isInfoEnabled()) {
+		logger.info("SENSOR :" + sensores.get(i).getNum_sensor());
+	    }
+	    ponerconfsens(i);
+
+	    try {
+		Thread.sleep(IrrisoftConstantes.DELAY_LEERCONF_SENSORES);
+	    } catch (InterruptedException e) {
+		if (logger.isErrorEnabled()) {
+		    logger.error("Hilo interrumpido: " + e.getMessage());
+		}
+	    }
+	}
+
+	// Si no hay caudalimetro deshabilito el botón
+	// TEST
+	if (window.haycaudalimetro)
+	    window.Testbutton.setEnabled(true);
+	else
+	    window.Testbutton.setEnabled(false);
+
+    }
+
+    /**
+     * Pongo la configuracion de los sensores. Los sensores que hay son:
+     * Contador de pulsos Sensor de humedad Amperimetro Pluviometro Sensor de
+     * Temperatura Anemometro Sensor de Flujo Sensor de Intrusion
+     * 
+     * @param i
+     */
+    public void ponerconfsens(int i) {
+
+	int tipo = 0;
+
+	// Contador de Pulsos 1
+	if (sensores.get(i).getNum_sensor().contains("Pu")) {
+
+	    tipo = 1;
+	    sensores.get(i).setTipo(1);
+	    haycaudalimetro = true;
+
+	}
+
+	// Humedad de Suelo 2
+	else if (sensores.get(i).getNum_sensor().contains("Hum")) {
+	    logger.info("ponerconfsensores");
+	    tipo = 2;
+	    sensores.get(i).setTipo(2);
+
+	}
+
+	// Amperimetro 3
+	else if (sensores.get(i).getNum_sensor().contains("Am")) {
+
+	    tipo = 3;
+	    sensores.get(i).setTipo(3);
+
+	}
+
+	// Pluviometro 4
+	else if (sensores.get(i).getNum_sensor().contains("Pl")) {
+
+	    tipo = 4;
+	    sensores.get(i).setTipo(4);
+
+	}
+
+	// Temperatura 5
+	else if (sensores.get(i).getNum_sensor().contains("Temp")) {
+
+	    tipo = 5;
+	    sensores.get(i).setTipo(5);
+
+	}
+
+	// Anemometro 6
+	else if (sensores.get(i).getNum_sensor().contains("An")) {
+
+	    tipo = 6;
+	    sensores.get(i).setTipo(6);
+	}
+
+	// Flujo 7
+	else if (sensores.get(i).getNum_sensor().contains("Flu")) {
+
+	    tipo = 7;
+	    sensores.get(i).setTipo(7);
+
+	}
+
+	// Intrusión 8
+	else if (sensores.get(i).getNum_sensor().contains("Int")) {
+
+	    tipo = 8;
+	    sensores.get(i).setTipo(8);
+
+	}
+
+	// Creo los hilos de los sensores conectados
+	hilos_sens(i, tipo);
+
+    }
+
+    /**
+     * Asocio cada sensor con su placa y le asocio un hilo.
+     * 
+     * @param i
+     * @param tipo
+     */
+    private void hilos_sens(int i, int tipo) {
+
+	// ////////////////
+	// El sensor va acoplado a una bt2
+	if (sensores.get(i).getTipo_placa().contains("BT")) {
+
+	    // Le asigno el puerto serie y el num de placa
+	    if (IrrisoftConstantes.PLACA_1 == sensores.get(i).getNum_placa()) {
+		if (serie5 == null) {
+		    nuevoSerie(getSemaforobt2(), serie5,
+			    Irrisoft.config.getBt2(), 5);
+		    activabt(serie5);
+		}
+		sensores.get(i).setSerial(serie5);
+		sensores.get(i).setNum_placa(5);
+		sensbt2 = true;
+
+	    } else if (IrrisoftConstantes.PLACA_2 == sensores.get(i)
+		    .getNum_placa()) {
+		if (serie6 == null) {
+		    nuevoSerie(getSemaforobt22(), serie6,
+			    Irrisoft.config.getBt22(), 6);
+		    activabt(serie6);
+		}
+		sensores.get(i).setSerial(serie6);
+		sensores.get(i).setNum_placa(6);
+		sensbt22 = true;
+
+	    } else if (IrrisoftConstantes.PLACA_3 == sensores.get(i)
+		    .getNum_placa()) {
+
+		if (serie7 == null) {
+		    nuevoSerie(getSemaforobt23(), serie7,
+			    Irrisoft.config.getBt23(), 7);
+		    activabt(serie7);
+		}
+		sensores.get(i).setSerial(serie7);
+		sensores.get(i).setNum_placa(7);
+		sensbt23 = true;
+
+	    } else if (IrrisoftConstantes.PLACA_4 == sensores.get(i)
+		    .getNum_placa()) {
+
+		if (serie8 == null) {
+		    nuevoSerie(getSemaforobt24(), serie8,
+			    Irrisoft.config.getBt24(), 8);
+		    activabt(serie8);
+		}
+		sensores.get(i).setSerial(serie8);
+		sensores.get(i).setNum_placa(8);
+		sensbt24 = true;
+	    }
+
+	    // window.panelecturasbt2 = Panelecturasbt2.getInstance();
+
+	    // Contador de Pulsos
+	    if (IrrisoftConstantes.SENSOR_CAUDALIMETRO == tipo) {
+		logger.warn("Creo HiloCaudalimetro de BT, placa: "
+			+ sensores.get(i).getNum_placa());
+
+		hilocau = new HiloCaudalimetro(sensores.get(i).getSerial(),
+			sensores.get(i).getNum_placa(), 0, sensores.get(i));
+
+		// hilocau.setMci(false);
+		sensores.get(i).setInstancia(hilocau);
+		// Thread th = new Thread(hilocau);
+		// th.setName("Caudalímetro " + th.getId());
+		// sensores.get(i).setHilosens(th);
+		sensores.get(i).setInstancia(hilocau);
+		sensores.get(i).setHilosens(new Thread(hilocau));
+
+		sensores.get(i)
+			.getHilosens()
+			.setName(
+				"Hilo Caudalimetro: "
+					+ sensores.get(i).getHilosens().getId());
+		// Añado el listener para el que en el rearme me deje morir el
+		// hilo.
+		Irrisoft.window.volcado.con.addPropertyChangeListener("false",
+			(HiloCaudalimetro) sensores.get(i).getInstancia());
+		sensores.get(i).getHilosens().start();
+
+	    }
+	    // Humedad
+	    else if (IrrisoftConstantes.SENSOR_HIGROMETRO == tipo) {
+		logger.warn("Creo HiloHumedad de BT, placa: "
+			+ sensores.get(i).getNum_placa());
+
+		// meto la valvula propietaria a la lista
+		sensores.get(i)
+			.getValvsassoc()
+			.add(Integer
+				.parseInt(sensores.get(i).getNum_est_prop()));
+
+		if (sensores.get(i).getNum_est_asoc() != null) {
+		    // Tokenizo las valvulas asociadas
+		    StringTokenizer token = new StringTokenizer(sensores.get(i)
+			    .getNum_est_asoc(), ",");
+		    while (token.hasMoreTokens()) {
+			sensores.get(i).getValvsassoc()
+				.add(Integer.parseInt(token.nextToken()));
+		    }
+		}
+		// Creo el hilo
+		HiloHumedadSuelo hilohum = new HiloHumedadSuelo(sensores.get(i)
+			.getSerial(), sensores.get(i));
+		sensores.get(i).setInstancia(hilohum);
+		Thread th = new Thread(hilohum);
+		th.setName("Higrómetro " + th.getId());
+		sensores.get(i).setHilosens(th);
+		// Añado el listener para el que en el rearme me deje morir el
+		// hilo
+		Irrisoft.window.volcado.con.addPropertyChangeListener("false",
+			(HiloHumedadSuelo) sensores.get(i).getInstancia());
+		sensores.get(i).getHilosens().start();
+
+	    }
+
+	    // Amperímetro
+	    else if (IrrisoftConstantes.SENSOR_AMPERIMETRO == tipo) {
+		logger.warn("Creo HiloAmpeimetro de BT, placa: "
+			+ sensores.get(i).getNum_placa());
+
+		HiloAmperimetro hiloamp = new HiloAmperimetro(sensores.get(i)
+			.getSerial(), sensores.get(i), sensores.get(i)
+			.getNum_placa());
+		hiloamp.setMci(false);
+		sensores.get(i).setInstancia(hiloamp);
+		Thread th = new Thread(hiloamp);
+		th.setName("Amperímetro " + th.getId());
+		sensores.get(i).setHilosens(th);
+		// Añado el listener para el que en el rearme me deje morir el
+		// hilo
+		Irrisoft.window.volcado.con.addPropertyChangeListener("false",
+			(HiloAmperimetro) sensores.get(i).getInstancia());
+		sensores.get(i).getHilosens().start();
+
+	    }
+
+	}
+
+	// El sensor va acoplado a una placa de sensores
+	else if (sensores.get(i).getTipo_placa()
+		.contains(IrrisoftConstantes.PLACA_TIPO_SENSORES)) {
+
+	    hayplacasens = true;
+
+	    if (window.seriesens == null) {
+		nuevoSerie(getSemaforosens(), seriesens,
+			Irrisoft.config.getSens(), 0);
+		window.series.add(window.seriesens);
+	    }
+
+	    sensores.get(i).setSerial(seriesens);
+	    sensores.get(i).setNum_placa(0);
+
+	    // window.panelecturasens = Panelecturasens.getInstance();
+
+	    // Caudalimetro
+	    if (IrrisoftConstantes.SENSOR_CAUDALIMETRO == tipo) {
+		logger.warn("Creo HiloCaudalimetro de Placa Sensores.");
+
+		hilocau = new HiloCaudalimetro(sensores.get(i).getSerial(),
+			sensores.get(i).getNum_placa(), 0, sensores.get(i));
+		// hilocau.setMci(false);
+		sensores.get(i).setInstancia(hilocau);
+		Thread th = new Thread(hilocau);
+		th.setName("Caudalímetro " + th.getId());
+		sensores.get(i).setHilosens(th);
+		// Añado el listener para el que en el rearme me deje morir el
+		// hilo
+		Irrisoft.window.volcado.con.addPropertyChangeListener("false",
+			(HiloCaudalimetro) sensores.get(i).getInstancia());
+		sensores.get(i).getHilosens().start();
+
+	    }
+	    // Humedad
+	    else if (IrrisoftConstantes.SENSOR_HIGROMETRO == tipo) {
+		logger.warn("Creo HiloHigrometro de Placa Sensores.");
+
+		// meto la valvula propietaria a la lista
+		sensores.get(i)
+			.getValvsassoc()
+			.add(Integer
+				.parseInt(sensores.get(i).getNum_est_prop()));
+
+		if (sensores.get(i).getNum_est_asoc() != null) {
+		    // Tokenizo las valvulas asociadas
+		    StringTokenizer token = new StringTokenizer(sensores.get(i)
+			    .getNum_est_asoc(), ",");
+		    while (token.hasMoreTokens()) {
+			sensores.get(i).getValvsassoc()
+				.add(Integer.parseInt(token.nextToken()));
+		    }
+		}
+		// Creo el hilo
+		HiloHumedadSuelo hilohum = new HiloHumedadSuelo(sensores.get(i)
+			.getSerial(), sensores.get(i));
+		sensores.get(i).setInstancia(hilohum);
+		Thread th = new Thread(hilohum);
+		th.setName("Higrómetro " + th.getId());
+		sensores.get(i).setHilosens(th);
+		// Añado el listener para el que en el rearme me deje morir el
+		// hilo
+		Irrisoft.window.volcado.con.addPropertyChangeListener("false",
+			(HiloHumedadSuelo) sensores.get(i).getInstancia());
+		sensores.get(i).getHilosens().start();
+
+	    }
+	    // Amperimetro
+	    else if (IrrisoftConstantes.SENSOR_AMPERIMETRO == tipo) {
+		logger.warn("Creo HiloAmperimetro de Placa Sensores.");
+		// hayampplacasensores = true;
+		HiloAmperimetro hiloamp = new HiloAmperimetro(sensores.get(i)
+			.getSerial(), sensores.get(i), sensores.get(i)
+			.getNum_placa());
+		hiloamp.setMci(true);
+		sensores.get(i).setInstancia(hiloamp);
+		Thread th = new Thread(hiloamp);
+		th.setName("Amperímetro " + th.getId());
+		sensores.get(i).setHilosens(th);
+		// Añado el listener para el que en el rearme me deje morir el
+		// hilo
+		Irrisoft.window.volcado.con.addPropertyChangeListener("false",
+			(HiloAmperimetro) sensores.get(i).getInstancia());
+		sensores.get(i).getHilosens().start();
+
+	    }
+	    // Pluviometro
+	    else if (IrrisoftConstantes.SENSOR_PLUVIOMETRO == tipo) {
+		logger.warn("Creo HiloPluviometro de Placa de Sensores.");
+
+		HiloPluviometro hiloplu = new HiloPluviometro(sensores.get(i)
+			.getSerial(), sensores.get(i));
+
+		sensores.get(i).setInstancia(hiloplu);
+		Thread th = new Thread(hiloplu);
+		th.setName("Pluviómetro" + th.getId());
+		sensores.get(i).setHilosens(th);
+		// Añado el listener para el que en el rearme me deje morir el
+		// hilo
+		Irrisoft.window.volcado.con.addPropertyChangeListener("false",
+			(HiloPluviometro) sensores.get(i).getInstancia());
+		// Añado el listener para saber cuando tengo conexion a BBDD
+		// Remota.
+		Irrisoft.window.volcado.con.addPropertyChangeListener("true",
+			(HiloPluviometro) sensores.get(i).getInstancia());
+		sensores.get(i).getHilosens().start();
+
+	    }
+	    // Temperatura
+	    else if (IrrisoftConstantes.SENSOR_TERMOMETRO == tipo) {
+		logger.warn("Creo HiloTemperatura de Placa Sensores.");
+
+		HiloTemperatura hilotemp = new HiloTemperatura(sensores.get(i)
+			.getSerial(), sensores.get(i));
+		sensores.get(i).setInstancia(hilotemp);
+		Thread th = new Thread(hilotemp);
+		th.setName("Termómetro " + th.getId());
+		sensores.get(i).setHilosens(th);
+		// Añado el listener para el que en el rearme me deje morir el
+		// hilo
+
+		Irrisoft.window.volcado.con.addPropertyChangeListener("false",
+			(HiloTemperatura) sensores.get(i).getInstancia());
+		// Añado el listener para saber cuando tengo conexion a BBDD
+		// Remota.
+		Irrisoft.window.volcado.con.addPropertyChangeListener("true",
+			(HiloTemperatura) sensores.get(i).getInstancia());
+
+		sensores.get(i).getHilosens().start();
+
+	    }
+	    // Anemometro
+	    else if (IrrisoftConstantes.SENSOR_ANEMOMETRO == tipo) {
+		logger.warn("Creo HiloAnemometro de Placa Sensores.");
+
+		HiloAnemometro hiloane = new HiloAnemometro(sensores.get(i)
+			.getSerial(), sensores.get(i));
+		sensores.get(i).setInstancia(hiloane);
+		Thread th = new Thread(hiloane);
+		th.setName("Anemómetro " + th.getId());
+		sensores.get(i).setHilosens(th);
+		// Añado el listener para el que en el rearme me deje morir el
+		// hilo.
+		Irrisoft.window.volcado.con.addPropertyChangeListener("false",
+			(HiloAnemometro) sensores.get(i).getInstancia());
+		// Añado el listener para saber cuando tengo conexion a BBDD
+		// Remota.
+		Irrisoft.window.volcado.con.addPropertyChangeListener("true",
+			(HiloAnemometro) sensores.get(i).getInstancia());
+		sensores.get(i).getHilosens().start();
+
+	    }
+	    // Flujo
+	    else if (IrrisoftConstantes.SENSOR_FLUJO == tipo) {
+
+		// TODO
+
+	    }
+	    // Intrusión
+	    else if (IrrisoftConstantes.SENSOR_INTRUSION == tipo) {
+
+		// TODO
+
+	    }
+	}
+
+	// /////////////
+	// El sensor va acoplado directamente a la raspberry por gpio
+	else if (sensores.get(i).getTipo_placa()
+		.contains(IrrisoftConstantes.PLACA_TIPO_RPI)) {
+
+	    // Intrusión
+	    if (IrrisoftConstantes.SENSOR_INTRUSION == tipo) {
+
+	    }
+
+	}
+
+	// ////////////////
+	// El sensor va acoplado a una controladora de relés
+	else if (sensores.get(i).getTipo_placa()
+		.contains(IrrisoftConstantes.PLACA_TIPO_CONTROLADORA)) {
+
+	    // window.panelecturasmci = Panelecturasmci.getInstance();
+
+	    // Le asigno el puerto serie y el num de placa
+	    if (IrrisoftConstantes.PLACA_1 == sensores.get(i).getNum_placa()) {
+		if (serie1 == null)
+		    nuevoSerie(getSemaforomci(), serie1,
+			    Irrisoft.config.getMci(), 1);
+		sensores.get(i).setSerial(serie1);
+		sensmci = true;
+
+	    } else if (IrrisoftConstantes.PLACA_2 == sensores.get(i)
+		    .getNum_placa()) {
+		if (serie2 == null)
+		    nuevoSerie(getSemaforomci2(), serie2,
+			    Irrisoft.config.getMci2(), 2);
+		sensores.get(i).setSerial(serie2);
+		sensmci2 = true;
+
+	    } else if (IrrisoftConstantes.PLACA_3 == sensores.get(i)
+		    .getNum_placa()) {
+		if (serie3 == null)
+		    nuevoSerie(getSemaforomci3(), serie3,
+			    Irrisoft.config.getMci3(), 3);
+		sensores.get(i).setSerial(serie3);
+		sensmci3 = true;
+	    } else if (IrrisoftConstantes.PLACA_4 == sensores.get(i)
+		    .getNum_placa()) {
+		if (serie4 == null)
+		    nuevoSerie(getSemaforomci4(), serie4,
+			    Irrisoft.config.getMci4(), 4);
+		sensores.get(i).setSerial(serie4);
+		sensmci4 = true;
+	    }
+
+	    // Caudalimetro
+	    if (IrrisoftConstantes.SENSOR_CAUDALIMETRO == tipo) {
+
+		logger.warn("Creo HiloCaudalimetro de Placa Controladora, placa: "
+			+ sensores.get(i).getNum_placa());
+
+		hilocau = new HiloCaudalimetro(sensores.get(i).getSerial(),
+			sensores.get(i).getNum_placa(), 0, sensores.get(i));
+		// hilocau.setMci(false);
+		sensores.get(i).setInstancia(hilocau);
+		Thread th = new Thread(hilocau);
+		th.setName("Caudalímetro " + th.getId());
+		sensores.get(i).setHilosens(th);
+		// Añado el listener para el que en el rearme me deje morir el
+		// hilo
+		Irrisoft.window.volcado.con.addPropertyChangeListener("false",
+			(HiloCaudalimetro) sensores.get(i).getInstancia());
+		sensores.get(i).getHilosens().start();
+
+	    }
+
+	    // Humedad
+	    else if (IrrisoftConstantes.SENSOR_HIGROMETRO == tipo) {
+		logger.warn("Creo HiloHumedad de Placa Controladora, placa: "
+			+ sensores.get(i).getNum_placa());
+
+		// //meto la valvula propietaria a la lista
+		sensores.get(i)
+			.getValvsassoc()
+			.add(Integer
+				.parseInt(sensores.get(i).getNum_est_prop()));
+
+		if (sensores.get(i).getNum_est_asoc() != null) {
+		    // Tokenizo las valvulas asociadas
+		    StringTokenizer token = new StringTokenizer(sensores.get(i)
+			    .getNum_est_asoc(), ",");
+		    while (token.hasMoreTokens()) {
+			sensores.get(i).getValvsassoc()
+				.add(Integer.parseInt(token.nextToken()));
+		    }
+		}
+
+		// Creo el hilo
+		HiloHumedadSuelo hilohum = new HiloHumedadSuelo(sensores.get(i)
+			.getSerial(), sensores.get(i));
+		sensores.get(i).setInstancia(hilohum);
+		Thread th = new Thread(hilohum);
+		th.setName("Higrometro " + th.getId());
+		sensores.get(i).setHilosens(th);
+		// Añado el listener para el que en el rearme me deje morir el
+		// hilo
+		Irrisoft.window.volcado.con.addPropertyChangeListener("false",
+			(HiloHumedadSuelo) sensores.get(i).getInstancia());
+		sensores.get(i).getHilosens().start();
+
+	    }
+
+	    // Amperimetro
+	    else if (IrrisoftConstantes.SENSOR_AMPERIMETRO == tipo) {
+		logger.warn("Creo HiloAmperimetro de Placa Controladora, placa: "
+			+ sensores.get(i).getNum_placa());
+
+		HiloAmperimetro hiloamp = new HiloAmperimetro(sensores.get(i)
+			.getSerial(), sensores.get(i), sensores.get(i)
+			.getNum_placa());
+		hiloamp.setMci(true);
+		sensores.get(i).setInstancia(hiloamp);
+
+		Thread th = new Thread(hiloamp);
+		th.setName("Amperímetro " + th.getId());
+
+		// Este es el listener del sensor.
+		// hiloamp.addPropertyChangeListener("lectura",panelecturasmci);
+		sensores.get(i).setHilosens(th);
+		// Añado el listener para el que en el rearme me deje morir el
+		// hilo
+		Irrisoft.window.volcado.con.addPropertyChangeListener("false",
+			(HiloAmperimetro) sensores.get(i).getInstancia());
+		sensores.get(i).getHilosens().start();
+
+	    }
+
+	    // Pluviometro
+	    else if (IrrisoftConstantes.SENSOR_PLUVIOMETRO == tipo) {
+		logger.warn("Creo HiloPluviometro de Placa Controladora, placa: "
+			+ sensores.get(i).getNum_placa());
+
+		HiloPluviometro hiloplu = new HiloPluviometro(sensores.get(i)
+			.getSerial(), sensores.get(i));
+		sensores.get(i).setInstancia(hiloplu);
+		Thread th = new Thread(hiloplu);
+		th.setName("Pluviometro " + th.getId());
+		sensores.get(i).setHilosens(th);
+		// Añado el listener para el que en el rearme me deje morir el
+		// hilo
+		Irrisoft.window.volcado.con.addPropertyChangeListener("false",
+			(HiloPluviometro) sensores.get(i).getInstancia());
+		// Añado el listener para controlar la conexion Remota
+		Irrisoft.window.volcado.con.addPropertyChangeListener("true",
+			(HiloPluviometro) sensores.get(i).getInstancia());
+		sensores.get(i).getHilosens().start();
+
+	    }
+	    // Temperatura
+	    else if (IrrisoftConstantes.SENSOR_TERMOMETRO == tipo) {
+		logger.warn("Creo HiloTemperatura de Placa Controladora, placa: "
+			+ sensores.get(i).getNum_placa());
+
+		HiloTemperatura hilotemp = new HiloTemperatura(sensores.get(i)
+			.getSerial(), sensores.get(i));
+		sensores.get(i).setInstancia(hilotemp);
+		Thread th = new Thread(hilotemp);
+		th.setName("Amperímetro " + th.getId());
+		sensores.get(i).setHilosens(th);
+		// Añado el listener para el que en el rearme me deje morir el
+		// hilo
+		Irrisoft.window.volcado.con.addPropertyChangeListener("false",
+			(HiloTemperatura) sensores.get(i).getInstancia());
+		// Añado el listener para controlar la conexion Remota
+		Irrisoft.window.volcado.con.addPropertyChangeListener("true",
+			(HiloTemperatura) sensores.get(i).getInstancia());
+		sensores.get(i).getHilosens().start();
+
+	    }
+	    // Anemometro
+	    else if (IrrisoftConstantes.SENSOR_ANEMOMETRO == tipo) {
+		logger.warn("Creo HiloAnemometro de Placa Controladora, placa: "
+			+ sensores.get(i).getNum_placa());
+
+		HiloAnemometro hiloane = new HiloAnemometro(sensores.get(i)
+			.getSerial(), sensores.get(i));
+		sensores.get(i).setInstancia(hiloane);
+		Thread th = new Thread(hiloane);
+		th.setName("Anemómetro " + th.getId());
+		sensores.get(i).setHilosens(th);
+		// Añado el listener para el que en el rearme me deje morir el
+		// hilo
+		Irrisoft.window.volcado.con.addPropertyChangeListener("false",
+			(HiloAnemometro) sensores.get(i).getInstancia());
+		// Añado el listener para controlar la conexion Remota
+		Irrisoft.window.volcado.con.addPropertyChangeListener("true",
+			(HiloAnemometro) sensores.get(i).getInstancia());
+		sensores.get(i).getHilosens().start();
+
+	    }
+	    // Flujo
+	    else if (IrrisoftConstantes.SENSOR_FLUJO == tipo) {
+		// TODO
+	    }
+	    // Intrusión
+	    else if (IrrisoftConstantes.SENSOR_INTRUSION == tipo) {
+		// TODO
+	    }
+
+	}
+
+    }
+
+    /**
+     * Recorro las listas de valvulas para saber cuales están abiertas en la
+     * invocación !!
+     * 
+     * @param valv
+     * @param tipo
+     * @return
+     */
+    public synchronized int addvalvsabiertas(Valvula valv, int tipo) {
+
+	int abiertas = 0;
+
+	if (IrrisoftConstantes.PLACA_MCI_1 == tipo) {
+	    Irrisoft.window.valvsabiertasmci.add(valv);
+	    Irrisoft.window.valvsabiertastot.add(valv);
+	    abiertas = Irrisoft.window.valvsabiertasmci.size();
+	} else if (IrrisoftConstantes.PLACA_MCI_2 == tipo) {
+	    Irrisoft.window.valvsabiertasmci2.add(valv);
+	    Irrisoft.window.valvsabiertastot.add(valv);
+	    abiertas = Irrisoft.window.valvsabiertasmci2.size();
+	} else if (IrrisoftConstantes.PLACA_MCI_3 == tipo) {
+	    Irrisoft.window.valvsabiertasmci3.add(valv);
+	    Irrisoft.window.valvsabiertastot.add(valv);
+	    abiertas = Irrisoft.window.valvsabiertasmci3.size();
+	} else if (IrrisoftConstantes.PLACA_MCI_4 == tipo) {
+	    Irrisoft.window.valvsabiertasmci4.add(valv);
+	    Irrisoft.window.valvsabiertastot.add(valv);
+	    abiertas = Irrisoft.window.valvsabiertasmci4.size();
+	} else if (IrrisoftConstantes.PLACA_BT2_5 == tipo) {
+	    Irrisoft.window.valvsabiertasbt2.add(valv);
+	    Irrisoft.window.valvsabiertastot.add(valv);
+	    abiertas = Irrisoft.window.valvsabiertasbt2.size();
+	} else if (IrrisoftConstantes.PLACA_BT2_6 == tipo) {
+	    Irrisoft.window.valvsabiertasbt22.add(valv);
+	    Irrisoft.window.valvsabiertastot.add(valv);
+	    abiertas = Irrisoft.window.valvsabiertasbt22.size();
+	} else if (IrrisoftConstantes.PLACA_BT2_7 == tipo) {
+	    Irrisoft.window.valvsabiertasbt23.add(valv);
+	    Irrisoft.window.valvsabiertastot.add(valv);
+	    abiertas = Irrisoft.window.valvsabiertasbt23.size();
+	} else if (IrrisoftConstantes.PLACA_BT2_8 == tipo) {
+	    Irrisoft.window.valvsabiertasbt24.add(valv);
+	    Irrisoft.window.valvsabiertastot.add(valv);
+	    abiertas = Irrisoft.window.valvsabiertasbt24.size();
+	} else if (IrrisoftConstantes.PLACA_SAMCLA == tipo) {
+	    Irrisoft.window.valvsabiertasamcla.add(valv);
+	    Irrisoft.window.valvsabiertastot.add(valv);
+	    abiertas = Irrisoft.window.valvsabiertasamcla.size();
+	}
+
+	if (logger.isInfoEnabled()) {
+	    logger.info("AÑADO valvula a listavalvsabiertastot: "
+		    + valv.getCodelecvalv() + " , size: "
+		    + Irrisoft.window.valvsabiertastot.size() + ", tipo: "
+		    + tipo);
+	}
+
+	return abiertas;
+
+    }
+
+    /**
+     * Recorro cada lista de valvulas, para saber cuantas valvulas estan
+     * abiertas.
+     * 
+     * @param tipo
+     * @return
+     */
+    public synchronized int valvsabiertas(int tipo) {
+
+	int abiertas = 0;
+
+	if (IrrisoftConstantes.VALVS_ABIERTAS_TOT == tipo) {
+	    abiertas = Irrisoft.window.valvsabiertastot.size();
+	} else if (IrrisoftConstantes.PLACA_MCI_1 == tipo) {
+	    abiertas = Irrisoft.window.valvsabiertasmci.size();
+	} else if (IrrisoftConstantes.PLACA_MCI_2 == tipo) {
+	    abiertas = Irrisoft.window.valvsabiertasmci2.size();
+	} else if (IrrisoftConstantes.PLACA_MCI_3 == tipo) {
+	    abiertas = Irrisoft.window.valvsabiertasmci3.size();
+	} else if (IrrisoftConstantes.PLACA_MCI_4 == tipo) {
+	    abiertas = Irrisoft.window.valvsabiertasmci4.size();
+	} else if (IrrisoftConstantes.PLACA_BT2_5 == tipo) {
+	    abiertas = Irrisoft.window.valvsabiertasbt2.size();
+	} else if (IrrisoftConstantes.PLACA_BT2_6 == tipo) {
+	    abiertas = Irrisoft.window.valvsabiertasbt22.size();
+	} else if (IrrisoftConstantes.PLACA_BT2_7 == tipo) {
+	    abiertas = Irrisoft.window.valvsabiertasbt23.size();
+	} else if (IrrisoftConstantes.PLACA_BT2_8 == tipo) {
+	    abiertas = Irrisoft.window.valvsabiertasbt24.size();
+	} else if (IrrisoftConstantes.PLACA_SAMCLA == tipo) {
+	    abiertas = Irrisoft.window.valvsabiertasamcla.size();
+	}
+
+	return abiertas;
+
+    }
+
+    /**
+     * Me da una lista con las valvulas asociadas a una placa (tipo).
+     * 
+     * @param tipo
+     * @return
+     */
+    public synchronized LinkedHashSet<Valvula> listavalvsabiertas(int tipo) {
+
+	LinkedHashSet<Valvula> lista = new LinkedHashSet<Valvula>();
+
+	if (IrrisoftConstantes.PLACA_MCI_1 == tipo) {
+	    lista = Irrisoft.window.valvsabiertasmci;
+	} else if (IrrisoftConstantes.PLACA_MCI_2 == tipo) {
+	    lista = Irrisoft.window.valvsabiertasmci2;
+	} else if (IrrisoftConstantes.PLACA_MCI_3 == tipo) {
+	    lista = Irrisoft.window.valvsabiertasmci3;
+	} else if (IrrisoftConstantes.PLACA_MCI_4 == tipo) {
+	    lista = Irrisoft.window.valvsabiertasmci4;
+	} else if (IrrisoftConstantes.PLACA_BT2_5 == tipo) {
+	    lista = Irrisoft.window.valvsabiertasbt2;
+	} else if (IrrisoftConstantes.PLACA_BT2_6 == tipo) {
+	    lista = Irrisoft.window.valvsabiertasbt22;
+	} else if (IrrisoftConstantes.PLACA_BT2_7 == tipo) {
+	    lista = Irrisoft.window.valvsabiertasbt23;
+	} else if (IrrisoftConstantes.PLACA_BT2_8 == tipo) {
+	    lista = Irrisoft.window.valvsabiertasbt24;
+	} else if (IrrisoftConstantes.PLACA_SAMCLA == tipo) {
+	    lista = Irrisoft.window.valvsabiertasamcla;
+	}
+
+	return lista;
+
+    }
+
+    /**
+     * Quito valvulas abiertas de la lista que le corresponda.
+     * 
+     * @param valv
+     * @param tipo
+     */
+    public synchronized void quitarvalvabiertas(Valvula valv, int tipo) {
+
+	if (IrrisoftConstantes.PLACA_MCI_1 == tipo) {
+	    Irrisoft.window.valvsabiertasmci.remove(valv);
+	    Irrisoft.window.valvsabiertastot.remove(valv);
+	} else if (IrrisoftConstantes.PLACA_MCI_2 == tipo) {
+	    Irrisoft.window.valvsabiertasmci2.remove(valv);
+	    Irrisoft.window.valvsabiertastot.remove(valv);
+	} else if (IrrisoftConstantes.PLACA_MCI_3 == tipo) {
+	    Irrisoft.window.valvsabiertasmci3.remove(valv);
+	    Irrisoft.window.valvsabiertastot.remove(valv);
+	} else if (IrrisoftConstantes.PLACA_MCI_4 == tipo) {
+	    Irrisoft.window.valvsabiertasmci4.remove(valv);
+	    Irrisoft.window.valvsabiertastot.remove(valv);
+	} else if (IrrisoftConstantes.PLACA_BT2_5 == tipo) {
+	    Irrisoft.window.valvsabiertasbt2.remove(valv);
+	    Irrisoft.window.valvsabiertastot.remove(valv);
+	} else if (IrrisoftConstantes.PLACA_BT2_6 == tipo) {
+	    Irrisoft.window.valvsabiertasbt22.remove(valv);
+	    Irrisoft.window.valvsabiertastot.remove(valv);
+	} else if (IrrisoftConstantes.PLACA_BT2_7 == tipo) {
+	    Irrisoft.window.valvsabiertasbt23.remove(valv);
+	    Irrisoft.window.valvsabiertastot.remove(valv);
+	} else if (IrrisoftConstantes.PLACA_BT2_8 == tipo) {
+	    Irrisoft.window.valvsabiertasbt24.remove(valv);
+	    Irrisoft.window.valvsabiertastot.remove(valv);
+	} else if (IrrisoftConstantes.PLACA_SAMCLA == tipo) {
+	    Irrisoft.window.valvsabiertasamcla.remove(valv);
+	    Irrisoft.window.valvsabiertastot.remove(valv);
+	}
+
+	if (logger.isInfoEnabled()) {
+	    logger.info("QUITO valvula de listavalvsabiertastot: "
+		    + valv.getCodelecvalv() + " , "
+		    + Irrisoft.window.valvsabiertastot.size());
+	}
+
+    }
+
+    /**
+     * Consigue el device number del puerto ACM
+     */
+    public void devicenumACM() {
+
+	try {
+	    String[] cmd = { "sh", "-c",
+		    "dmesg |grep ttyACM* |cut -d ] -f 2 |cut -d U -f 1 |cut -d m -f 2" };
+	    Process p = Runtime.getRuntime().exec(cmd);
+	    BufferedReader bri = new BufferedReader(new InputStreamReader(
+		    p.getInputStream()));
+	    String tmpLine = "";
+	    String s3 = "";
+
+	    while ((tmpLine = bri.readLine()) != null) {
+
+		StringTokenizer tokenizer = new StringTokenizer(tmpLine, " ");
+
+		int i = 0;
+
+		while (tokenizer.hasMoreTokens()) {
+
+		    String s = tokenizer.nextToken().toString();
+
+		    if (i == 0) {
+			if (logger.isInfoEnabled()) {
+			    logger.info("TOKEN devicenum: " + s + " " + i + " "
+				    + tokenizer.countTokens());
+			}
+			if (!s.contentEquals(s3)) {
+
+			    String puerto = tokenizer.nextToken().toString();
+			    puerto = puerto.substring(0, puerto.length() - 1);
+
+			    for (int j = 0; j < series.size(); j++) {
+
+				if (series.get(j).serialPort.getPortName()
+					.contains(puerto)) {
+				    series.get(j).device = s;
+				    if (logger.isInfoEnabled()) {
+					logger.info("series device "
+						+ series.get(j).device);
+				    }
+				    s3 = s;
+				}
+			    }
+
+			    i++;
+
+			}
+
+		    }
+		    i++;
+
+		}
+	    }
+	} catch (IOException e) {
+	    if (logger.isErrorEnabled()) {
+		logger.error(e.getMessage());
+	    }
+	}
+
+	// Flag inicializados los puertos
+	window.iniports = true;
+    }
+
+    /**
+     * Consigue el device number del puerto BT
+     */
+    public void devicenumBT() {
+
+	try {
+	    String[] cmd = { "sh", "-c",
+		    "dmesg |grep ftdi* |cut -d ] -f 2 |cut -d U -f 1 |cut -d m -f 2" };
+	    Process p = Runtime.getRuntime().exec(cmd);
+	    BufferedReader bri = new BufferedReader(new InputStreamReader(
+		    p.getInputStream()));
+	    String tmpLine = "";
+	    String s3 = "";
+
+	    while ((tmpLine = bri.readLine()) != null) {
+
+		StringTokenizer tokenizer = new StringTokenizer(tmpLine, " ");
+
+		int i = 0;
+
+		while (tokenizer.hasMoreTokens()) {
+
+		    String s = tokenizer.nextToken().toString();
+
+		    if (i == 0) {
+			if (logger.isInfoEnabled()) {
+			    logger.info("TOKEN devicenum: " + s + " " + i + " "
+				    + tokenizer.countTokens());
+			}
+
+			if (!s.contentEquals(s3)) {
+
+			    String puerto = tokenizer.nextToken().toString();
+			    puerto = puerto.substring(0, puerto.length() - 1);
+
+			    for (int j = 0; j < series.size(); j++) {
+
+				if (series.get(j).serialPort.getPortName()
+					.contains(puerto)) {
+				    series.get(j).device = s;
+				    if (logger.isInfoEnabled()) {
+					logger.info("series device "
+						+ series.get(j).device);
+				    }
+				    s3 = s;
+				}
+			    }
+
+			    i++;
+
+			}
+
+		    }
+		    i++;
+
+		}
+	    }
+	} catch (IOException e) {
+	    if (logger.isErrorEnabled()) {
+		logger.error(e.getMessage());
+	    }
+	}
+
+	// Flag inicializados los puertos
+	window.iniports = true;
+    }
+
+    /**
+     * Remapea los puertos ACM
+     */
+    public void remapeaACM() {
+
+	StringBuffer buffer = new StringBuffer();
+	// String sviejo="";
+	// boolean ultima;
+
+	try {
+
+	    // ArrayList<String> ports = new ArrayList<String>();
+
+	    String[] cmd = { "sh", "-c",
+		    "dmesg |tail |grep ttyACM* |cut -d ] -f 2 |cut -d U -f 1 |cut -d m -f 2" };
+	    Process p = Runtime.getRuntime().exec(cmd);
+	    BufferedReader bri = new BufferedReader(new InputStreamReader(
+		    p.getInputStream()));
+	    String tmpLine = "";
+
+	    while ((tmpLine = bri.readLine()) != null) {
+		buffer.append(tmpLine + "\n");
+	    }
+
+	    for (int j = 0; j < series.size(); j++) {
+
+		int index = buffer.lastIndexOf(series.get(j).device);
+
+		if (index != -1) {
+
+		    String linea = buffer.substring(index);
+
+		    StringTokenizer tokenizador = new StringTokenizer(linea,
+			    "\n");
+		    String churro = tokenizador.nextToken("\n");
+
+		    StringTokenizer tokenizador1 = new StringTokenizer(churro,
+			    " ");
+
+		    tokenizador1.nextToken();
+		    String puerto = tokenizador1.nextToken();
+		    puerto = puerto.substring(0, puerto.length() - 1);
+		    puerto = "/dev/" + puerto;
+
+		    if (!series.get(j).serialPort.getPortName().contentEquals(
+			    puerto)
+			    && (series.get(j).serialPort.isOpened())) {
+			if (logger.isInfoEnabled()) {
+			    logger.info("Remapeo puerto" + index);
+			}
+			series.get(j).serialPort.closePort();
+			SerialPort serialPort = new SerialPort(puerto);
+			series.get(j).setSerialPort(serialPort);
+			series.get(j).conectaserial(series.get(j).tipo);
+		    }
+		}
+	    }
+
+	} catch (IOException | SerialPortException e) {
+	    if (logger.isErrorEnabled()) {
+		logger.error(e.getMessage());
+	    }
+	}
+
+    }
+
+    /**
+     * Escribe los append a irrisoft.log
+     * 
+     * @param texto
+     */
+    public void escribelog(String texto) {
+
+	Timestamp time = new Timestamp(System.currentTimeMillis());
+	String tiempo = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss")
+		.format(time);
+
+	String comando = "echo '" + texto + tiempo + "' >> " + Irrisoft.home
+		+ "/irrisoft.log";
+	String[] cmd = { "sh", "-c", comando };
+
+	try {
+
+	    Runtime.getRuntime().exec(cmd);
+
+	} catch (IOException e) {
+	    if (logger.isErrorEnabled()) {
+		logger.error(e.getMessage());
+	    }
+	}
+
+    }
+
+    /**
+     * Escribe en el TextArea
+     * 
+     * @param texto
+     * @param formato
+     * @param interruptor
+     */
+    public void escribetextPane(String texto, SimpleAttributeSet formato,
+	    boolean interruptor) {
+
+	Timestamp time = new Timestamp(System.currentTimeMillis());
+	String tiempo = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss")
+		.format(time);
+
+	try {
+	    if (interruptor) {
+		Irrisoft.window.textPane.getStyledDocument().insertString(
+			Irrisoft.window.doc.getLength(), texto + tiempo,
+			formato);
+
+	    } else {
+		Irrisoft.window.textPane.getStyledDocument().insertString(
+			Irrisoft.window.doc.getLength(), texto, formato);
+	    }
+
+	} catch (BadLocationException e1) {
+	    if (logger.isErrorEnabled()) {
+		logger.error(e1.getMessage());
+	    }
+	}
+
+    }
+
+    /**
+     * Activa la BT2
+     * 
+     * @param serial
+     */
+    public void activabt(SerialDriver serial) {
+
+	serial.activabt(serial.serialPort, new Sensor());
+
+    }
+
+    /**
+     * Parar las conexiones con las BBDD (remota y local) desde el botón.
+     */
+    public void cierraDBhilo() {
+	if (Irrisoft.window.hiloescucha.getConnDB().desconectal()
+		&& Irrisoft.window.volcado.getCon().cierral()
+		&& Irrisoft.window.volcado.getCon().cierrar()) {
+	    Irrisoft.window.btnEmpezar.setText("Arrancar BBDDs");
+	}
+
+    }
+
+    /**
+     * Asocio cada puerto y semaforo a su placa correspondiente.
+     * 
+     * @param sem
+     * @param serial
+     * @param puerto
+     * @param tipo
+     */
+    public void nuevoSerie(Semaforo sem, SerialDriver serial, String puerto,
+	    int tipo) {
+
+	sem = new Semaforo(1);
+	serial = new SerialDriver();
+	SerialPort serialPort = new SerialPort(puerto);
+	serial.setSerialPort(serialPort);
+
+	if (IrrisoftConstantes.PLACA_MCI_1 == tipo) {
+	    setSerie1(serial);
+	    setSemaforomci(sem);
+	} else if (IrrisoftConstantes.PLACA_MCI_2 == tipo) {
+	    setSerie2(serial);
+	    setSemaforomci2(sem);
+	} else if (IrrisoftConstantes.PLACA_MCI_3 == tipo) {
+	    setSerie3(serial);
+	    setSemaforomci3(sem);
+	} else if (IrrisoftConstantes.PLACA_MCI_4 == tipo) {
+	    setSerie4(serial);
+	    setSemaforomci4(sem);
+	} else if (IrrisoftConstantes.PLACA_BT2_5 == tipo) {
+	    setSerie5(serial);
+	    setSemaforobt2(sem);
+	} else if (IrrisoftConstantes.PLACA_BT2_6 == tipo) {
+	    setSerie6(serial);
+	    setSemaforobt22(sem);
+	} else if (IrrisoftConstantes.PLACA_BT2_7 == tipo) {
+	    setSerie7(serial);
+	    setSemaforobt23(sem);
+	} else if (IrrisoftConstantes.PLACA_BT2_8 == tipo) {
+	    setSerie8(serial);
+	    setSemaforobt24(sem);
+	} else if (IrrisoftConstantes.PLACA_SENSORES_0 == tipo) {
+	    setSeriesens(serial);
+	    setSemaforosens(sem);
+	} else if (IrrisoftConstantes.PLACA_SAMCLA == tipo) {
+	    setSeriesamcla(serial);
+	    setSemaforosamcla(sem);
+	}
+	serial.conectaserial(tipo);
+	series.add(serial);
+
+    }
+
+    /**
+     * Cierro los puertos serie que hay conectados.
+     */
+    public void comprobarSerie() {
+	// Desconecto el serie correspondiente para el rearme
+	for (int i = 0; i < series.size(); i++) {
+	    if (series.get(i).serialPort.isOpened()) {
+		try {
+		    series.get(i).serialPort.closePort();
+		    logger.warn("Puerto cerrado: "
+			    + series.get(i).serialPort.getPortName());
+		} catch (SerialPortException e) {
+		    if (logger.isErrorEnabled()) {
+			logger.error("Error con el Puerto Serie: "
+				+ e.getMessage());
+		    }
+		}
+	    }
+	}
+    }
+
+    synchronized public String getHex(byte[] bytes, boolean escribo) {
+	StringBuilder result = new StringBuilder();
+	int i = 0;
+	for (byte b : bytes) {
+	    if (b < 10)
+		result.append(0);
+	    result.append(b);
+
+	    if (escribo) {
+		if (i < bytes.length - 1)
+		    result.append(".");
+		i++;
+	    }
+	}
+	return result.toString();
+    }
+
+    // /////////////////////////////////////
+    // Para el menú copy/paste del textarea
+    // ////////////////////////////////////
+    public static class ContextMenuMouseListener extends MouseAdapter {
+	private JPopupMenu popup = new JPopupMenu();
+
+	private Action cutAction;
+	private Action copyAction;
+	private Action pasteAction;
+	private Action undoAction;
+	private Action selectAllAction;
+
+	private JTextComponent textComponent;
+	private String savedString = "";
+	private Actions lastActionSelected;
+
+	private enum Actions {
+	    DESHACER, CORTAR, COPIAR, PEGAR, SELECCIONAR_TODO
+	}
+
+	public ContextMenuMouseListener() {
+	    undoAction = new AbstractAction("Deshacer") {
+
+		/**
+				 * 
+				 */
+		private static final long serialVersionUID = 1L;
+
+		@Override
+		public void actionPerformed(ActionEvent ae) {
+		    textComponent.setText("");
+		    textComponent.replaceSelection(savedString);
+
+		    lastActionSelected = Actions.DESHACER;
+		}
+	    };
+
+	    popup.add(undoAction);
+	    popup.addSeparator();
+
+	    cutAction = new AbstractAction("Cortar") {
+
+		/**
+				 * 
+				 */
+		private static final long serialVersionUID = 1L;
+
+		@Override
+		public void actionPerformed(ActionEvent ae) {
+		    lastActionSelected = Actions.CORTAR;
+		    savedString = textComponent.getText();
+		    textComponent.cut();
+		}
+	    };
+
+	    popup.add(cutAction);
+
+	    copyAction = new AbstractAction("Copiar") {
+
+		/**
+				 * 
+				 */
+		private static final long serialVersionUID = 1L;
+
+		@Override
+		public void actionPerformed(ActionEvent ae) {
+		    lastActionSelected = Actions.COPIAR;
+		    textComponent.copy();
+		}
+	    };
+
+	    popup.add(copyAction);
+
+	    pasteAction = new AbstractAction("Pegar") {
+
+		/**
+				 * 
+				 */
+		private static final long serialVersionUID = 1L;
+
+		@Override
+		public void actionPerformed(ActionEvent ae) {
+		    lastActionSelected = Actions.PEGAR;
+		    savedString = textComponent.getText();
+		    textComponent.paste();
+		}
+	    };
+
+	    popup.add(pasteAction);
+	    popup.addSeparator();
+
+	    selectAllAction = new AbstractAction("Seleccionar todo") {
+
+		/**
+				 * 
+				 */
+		private static final long serialVersionUID = 1L;
+
+		@Override
+		public void actionPerformed(ActionEvent ae) {
+		    lastActionSelected = Actions.SELECCIONAR_TODO;
+		    textComponent.selectAll();
+		}
+	    };
+
+	    popup.add(selectAllAction);
+	}
+
+	@Override
+	public void mouseClicked(MouseEvent e) {
+	    if (e.getModifiers() == InputEvent.BUTTON3_MASK) {
+		if (!(e.getSource() instanceof JTextComponent)) {
+		    return;
+		}
+
+		textComponent = (JTextComponent) e.getSource();
+		textComponent.requestFocus();
+
+		boolean enabled = textComponent.isEnabled();
+		boolean editable = textComponent.isEditable();
+		boolean nonempty = !(textComponent.getText() == null || textComponent
+			.getText().equals(""));
+		boolean marked = textComponent.getSelectedText() != null;
+
+		boolean pasteAvailable = Toolkit.getDefaultToolkit()
+			.getSystemClipboard().getContents(null)
+			.isDataFlavorSupported(DataFlavor.stringFlavor);
+
+		undoAction
+			.setEnabled(enabled
+				&& editable
+				&& (lastActionSelected == Actions.CORTAR || lastActionSelected == Actions.PEGAR));
+		cutAction.setEnabled(enabled && editable && marked);
+		copyAction.setEnabled(enabled && marked);
+		pasteAction.setEnabled(enabled && editable && pasteAvailable);
+		selectAllAction.setEnabled(enabled && nonempty);
+
+		int nx = e.getX();
+
+		if (nx > 500) {
+		    nx = nx - popup.getSize().width;
+		}
+
+		popup.show(e.getComponent(), nx, e.getY()
+			- popup.getSize().height);
+	    }
+	}
+    }
+
+    /**
+     * Escribo si habido TIMEOUT en la respuesta al abrir o cerrar una valvula.
+     * 
+     * @param abrir
+     */
+    public void escrituraTimeOutLeerResp(boolean abrir) {
+	if (abrir) {
+	    if (logger.isErrorEnabled()) {
+		logger.error("TIMEOUUUUUT en la lectura del buffer serie en apertura o cierre");
+	    }
+
+	    escribetextPane(
+		    "\nTIMEOUUUUUT en la lectura del buffer serie apertura",
+		    normal, false);
+
+	} else {
+	    if (logger.isErrorEnabled()) {
+		logger.error("TIMEOUUUUUT en la lectura del buffer serie en cierre");
+	    }
+
+	    escribetextPane(
+		    "\nTIMEOUUUUUT en la lectura del buffer serie cierre",
+		    normal, false);
+
+	}
+    }
+
+    // //////////////// GETTERS Y SETTERS
+
+    public ConexionDB getConn() {
+	return conn;
+    }
+
+    public void setConn(ConexionDB conn) {
+	this.conn = conn;
+    }
+
+    public HiloCaudalimetro getHilocau() {
+	return hilocau;
+    }
+
+    public void setHilocau(HiloCaudalimetro hilocau) {
+	this.hilocau = hilocau;
+    }
+
+    public SerialDriver getSerie1() {
+	return serie1;
+    }
+
+    public SerialDriver getSerie2() {
+	return serie2;
+    }
+
+    public SerialDriver getSerie3() {
+	return serie3;
+    }
+
+    public SerialDriver getSerie4() {
+	return serie4;
+    }
+
+    public SerialDriver getSerie5() {
+	return serie5;
+    }
+
+    public SerialDriver getSerie6() {
+	return serie6;
+    }
+
+    public SerialDriver getSerie7() {
+	return serie7;
+    }
+
+    public SerialDriver getSerie8() {
+	return serie8;
+    }
+
+    public SerialDriver getSeriesens() {
+	return seriesens;
+    }
+
+    public SerialDriver getSeriesamcla() {
+	return seriesamcla;
+    }
+
+    public Semaforo getSemaforobt2() {
+	return semaforobt2;
+    }
+
+    public void setSemaforobt2(Semaforo semaforobt2) {
+	this.semaforobt2 = semaforobt2;
+    }
+
+    public Semaforo getSemaforobt22() {
+	return semaforobt22;
+    }
+
+    public Semaforo getSemaforobt23() {
+	return semaforobt23;
+    }
+
+    public Semaforo getSemaforobt24() {
+	return semaforobt24;
+    }
+
+    public Semaforo getSemaforomci() {
+	return semaforomci;
+    }
+
+    public Semaforo getSemaforomci2() {
+	return semaforomci2;
+    }
+
+    public Semaforo getSemaforomci3() {
+	return semaforomci3;
+    }
+
+    public Semaforo getSemaforomci4() {
+	return semaforomci4;
+    }
+
+    public Semaforo getSemaforosens() {
+	return semaforosens;
+    }
+
+    public Semaforo getSemaforosamcla() {
+	return semaforosamcla;
+    }
+
+    public void setSerie1(SerialDriver serie1) {
+	this.serie1 = serie1;
+    }
+
+    public void setSerie2(SerialDriver serie2) {
+	this.serie2 = serie2;
+    }
+
+    public void setSerie3(SerialDriver serie3) {
+	this.serie3 = serie3;
+    }
+
+    public void setSerie4(SerialDriver serie4) {
+	this.serie4 = serie4;
+    }
+
+    public void setSerie5(SerialDriver serie5) {
+	this.serie5 = serie5;
+    }
+
+    public void setSerie6(SerialDriver serie6) {
+	this.serie6 = serie6;
+    }
+
+    public void setSerie7(SerialDriver serie7) {
+	this.serie7 = serie7;
+    }
+
+    public void setSerie8(SerialDriver serie8) {
+	this.serie8 = serie8;
+    }
+
+    public void setSeriesens(SerialDriver seriesens) {
+	this.seriesens = seriesens;
+    }
+
+    public void setSeriesamcla(SerialDriver seriesamcla) {
+	this.seriesamcla = seriesamcla;
+    }
+
+    public void setSemaforobt22(Semaforo semaforobt22) {
+	this.semaforobt22 = semaforobt22;
+    }
+
+    public void setSemaforobt23(Semaforo semaforobt23) {
+	this.semaforobt23 = semaforobt23;
+    }
+
+    public void setSemaforobt24(Semaforo semaforobt24) {
+	this.semaforobt24 = semaforobt24;
+    }
+
+    public void setSemaforomci(Semaforo semaforomci) {
+	this.semaforomci = semaforomci;
+    }
+
+    public void setSemaforomci2(Semaforo semaforomci2) {
+	this.semaforomci2 = semaforomci2;
+    }
+
+    public void setSemaforomci3(Semaforo semaforomci3) {
+	this.semaforomci3 = semaforomci3;
+    }
+
+    public void setSemaforomci4(Semaforo semaforomci4) {
+	this.semaforomci4 = semaforomci4;
+    }
+
+    public void setSemaforosens(Semaforo semaforosens) {
+	this.semaforosens = semaforosens;
+    }
+
+    public void setSemaforosamcla(Semaforo semaforo) {
+	this.semaforosamcla = semaforo;
+    }
+}

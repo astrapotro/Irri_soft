@@ -1,0 +1,890 @@
+package panelespack;
+
+import graficaspack.GraficaSensor;
+import irrisoftpack.Irrisoft;
+import irrisoftpack.IrrisoftConstantes;
+
+import java.awt.Font;
+import java.awt.Image;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.util.ArrayList;
+
+import javax.swing.ImageIcon;
+import javax.swing.JButton;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JSeparator;
+import javax.swing.border.TitledBorder;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import sensorespack.Sensor;
+import valvulaspack.ListaValvMci;
+
+public class Panelecturas extends JPanel {
+
+    private static Logger logger = LogManager.getLogger(Panelecturas.class
+	    .getName());
+
+    private static final long serialVersionUID = 7454182365055831222L;
+
+    // SINGLETON
+    private static Panelecturas instance;
+    // Variable de Irrisoft.
+    private Irrisoft IR;
+    // Variable para el nombre del sensor.
+    private String nombreFinal;
+    // Paneles lecturas de sensores
+    public Panelecturasbt2 sensbt2, sensbt22, sensbt23, sensbt24;
+    public Panelecturasmci sensmci, sensmci2, sensmci3, sensmci4;
+    public Panelecturasens sensens;
+
+    public static Panelecturas getInstance() {
+
+	if (instance == null) {
+	    instance = new Panelecturas();
+	}
+	return instance;
+    }
+
+    // Botones
+    private JButton btnmci1, btnmci2, btnmci3, btnmci4, btnbt21, btnbt22,
+	    btnbt23, btnbt24, btnplaca_sens;
+    private JLabel lblicono;
+
+    private Panelecturas() {
+	super();
+	setBorder(new TitledBorder(null, "Lecturas sensores",
+		TitledBorder.LEADING, TitledBorder.TOP, null, null));
+	this.IR = Irrisoft.window;
+	this.setBounds((IR.panelizq.getWidth() / 2) - 232, 160, 465, 344);
+	setLayout(null);
+
+	btnmci1 = new JButton("MCI1");
+	btnmci1.setBounds(12, 106, 87, 25);
+	add(btnmci1);
+
+	btnmci2 = new JButton("MCI2");
+	btnmci2.setBounds(131, 106, 87, 25);
+	add(btnmci2);
+
+	btnmci3 = new JButton("MCI3");
+	btnmci3.setBounds(248, 106, 87, 25);
+	add(btnmci3);
+
+	btnmci4 = new JButton("MCI4");
+	btnmci4.setBounds(366, 106, 87, 25);
+	add(btnmci4);
+
+	btnbt21 = new JButton("BT2-1");
+	btnbt21.setBounds(12, 183, 87, 25);
+	add(btnbt21);
+
+	btnbt22 = new JButton("BT2-2");
+	btnbt22.setBounds(131, 183, 87, 25);
+	add(btnbt22);
+
+	btnbt23 = new JButton("BT2-3");
+	btnbt23.setBounds(248, 183, 87, 25);
+	add(btnbt23);
+
+	btnbt24 = new JButton("BT2-4");
+	btnbt24.setBounds(366, 183, 87, 25);
+	add(btnbt24);
+
+	btnplaca_sens = new JButton("Placa sensores");
+	btnplaca_sens.setBounds(14, 234, 439, 50);
+	add(btnplaca_sens);
+
+	JSeparator separator = new JSeparator();
+	separator.setBounds(12, 220, 441, 2);
+	add(separator);
+
+	JSeparator separator_1 = new JSeparator();
+	separator_1.setBounds(12, 143, 441, 2);
+	add(separator_1);
+
+	JLabel lblPlacasmci = new JLabel("Placas MCI");
+	lblPlacasmci.setFont(new Font("Dialog", Font.BOLD | Font.ITALIC, 12));
+	lblPlacasmci.setBounds(12, 79, 111, 15);
+	add(lblPlacasmci);
+
+	JLabel lblPlacasBt = new JLabel("Placas BT2");
+	lblPlacasBt.setFont(new Font("Dialog", Font.BOLD | Font.ITALIC, 12));
+	lblPlacasBt.setBounds(12, 156, 111, 15);
+	add(lblPlacasBt);
+
+	JSeparator separator_2 = new JSeparator();
+	separator_2.setBounds(12, 65, 441, 2);
+	add(separator_2);
+
+	JSeparator separator_3 = new JSeparator();
+	separator_3.setBounds(12, 296, 441, 2);
+	add(separator_3);
+
+	// BOTON ATRAS
+	JButton btnAtras = new JButton("Atras");
+	btnAtras.setBounds(179, 310, 117, 25);
+	btnAtras.addActionListener(new ActionListener() {
+	    public void actionPerformed(ActionEvent arg0) {
+		IR.panelecturas.setVisible(false);
+		IR.panelfecha.setVisible(false);
+		IR.panelizq.setVisible(true);
+
+	    }
+	});
+	add(btnAtras);
+
+	lblicono = new JLabel("");
+	lblicono.setName("lblicono");
+	lblicono.setBounds(211, 12, 50, 48);
+	IR.redimensionado_jlabel(lblicono,
+		"/irrisoftpack/imagenes/sensores.png");
+	add(lblicono);
+
+    }
+
+    /**
+     * Para habilitar o deshabilitar los botones de placas dependiendo de la
+     * info de config
+     **/
+
+    public void habilitabotones() {
+
+	if (IR.valvsmci != null) {
+	    btnmci1.setEnabled(true);
+	    btnmci1.addMouseListener(new MouseAdapter() {
+
+		public void mouseClicked(MouseEvent e) {
+		    // IR.panelecturas.listenersetcmci(IrrisoftConstantes.PLACA_MCI_1,
+		    // IR.valvsmci);
+		    // // Aki se llama al panelecturas
+		    // IR.panelecturas.setVisible(false);
+		    // IR.panelecturasmci.getLbltitulo().setText("PLACA MCI 1");
+		    // IR.panelecturasmci.repaint();
+		    // IR.frmIrrisoft.getContentPane().add(IR.panelecturasmci);
+		    // IR.panelecturasmci.setVisible(true);
+
+		    if (sensmci == null) {
+			sensmci = new Panelecturasmci(1);
+			sensmci.getLbltitulo().setText("PLACA MCI 1");
+			sensmci.repaint();
+		    }
+
+		    // Añado listeners al panel
+		    listenersetcmci(IrrisoftConstantes.PLACA_MCI_1, sensmci);
+		    IR.panelecturas.setVisible(false);
+		    IR.frmIrrisoft.getContentPane().add(sensmci);
+		    sensmci.setVisible(true);
+
+		}
+	    });
+	} else
+	    btnmci1.setEnabled(false);
+
+	if (IR.valvsmci2 != null) {
+	    btnmci2.setEnabled(true);
+	    btnmci2.addMouseListener(new MouseAdapter() {
+
+		public void mouseClicked(MouseEvent e) {
+		    if (sensmci2 == null) {
+			sensmci2 = new Panelecturasmci(2);
+			sensmci2.getLbltitulo().setText("PLACA MCI 2");
+			sensmci2.repaint();
+		    }
+
+		    // Añado listeners al panel
+		    listenersetcmci(IrrisoftConstantes.PLACA_MCI_2, sensmci2);
+		    IR.panelecturas.setVisible(false);
+		    IR.frmIrrisoft.getContentPane().add(sensmci2);
+		    sensmci2.setVisible(true);
+		}
+
+	    });
+
+	} else
+	    btnmci2.setEnabled(false);
+
+	if (IR.valvsmci3 != null) {
+	    btnmci3.setEnabled(true);
+	    btnmci3.addMouseListener(new MouseAdapter() {
+
+		public void mouseClicked(MouseEvent e) {
+		    if (sensmci3 == null) {
+			sensmci3 = new Panelecturasmci(3);
+			sensmci3.getLbltitulo().setText("PLACA MCI 3");
+			sensmci3.repaint();
+		    }
+
+		    // Añado listeners al panel
+		    listenersetcmci(IrrisoftConstantes.PLACA_MCI_3, sensmci3);
+		    IR.panelecturas.setVisible(false);
+		    IR.frmIrrisoft.getContentPane().add(sensmci3);
+		    sensmci3.setVisible(true);
+
+		}
+	    });
+	} else
+	    btnmci3.setEnabled(false);
+
+	if (IR.valvsmci4 != null) {
+	    btnmci4.setEnabled(true);
+	    btnmci4.addMouseListener(new MouseAdapter() {
+
+		public void mouseClicked(MouseEvent e) {
+
+		    if (sensmci4 == null) {
+			sensmci4 = new Panelecturasmci(4);
+			sensmci4.getLbltitulo().setText("PLACA MCI 4");
+			sensmci4.repaint();
+		    }
+
+		    // Añado listeners al panel
+		    listenersetcmci(IrrisoftConstantes.PLACA_MCI_4, sensmci4);
+		    IR.panelecturas.setVisible(false);
+		    IR.frmIrrisoft.getContentPane().add(sensmci4);
+		    sensmci4.setVisible(true);
+
+		}
+	    });
+	} else
+	    btnmci4.setEnabled(false);
+
+	if (IR.sensbt2 == true) {
+
+	    btnbt21.setEnabled(true);
+	    btnbt21.addMouseListener(new MouseAdapter() {
+
+		public void mouseClicked(MouseEvent e) {
+		    if (sensbt2 == null) {
+			sensbt2 = new Panelecturasbt2(5);
+			sensbt2.getLbltitulo().setText("PLACA BT2-1");
+			sensbt2.repaint();
+		    }
+
+		    // Añado listeners al panel
+		    listenersetcbt2(IrrisoftConstantes.PLACA_BT2_5, sensbt2);
+		    IR.panelecturas.setVisible(false);
+		    IR.frmIrrisoft.getContentPane().add(sensbt2);
+		    sensbt2.setVisible(true);
+
+		}
+	    });
+	} else
+	    btnbt21.setEnabled(false);
+
+	if (IR.sensbt22 == true) {
+	    btnbt22.setEnabled(true);
+	    btnbt22.addMouseListener(new MouseAdapter() {
+
+		public void mouseClicked(MouseEvent e) {
+
+		    if (sensbt22 == null) {
+			sensbt22 = new Panelecturasbt2(6);
+			sensbt22.getLbltitulo().setText("PLACA BT2-2");
+			sensbt22.repaint();
+		    }
+
+		    // Añado listeners al panel
+		    listenersetcbt2(IrrisoftConstantes.PLACA_BT2_6, sensbt22);
+		    IR.panelecturas.setVisible(false);
+		    IR.frmIrrisoft.getContentPane().add(sensbt22);
+		    sensbt22.setVisible(true);
+
+		}
+	    });
+	} else
+	    btnbt22.setEnabled(false);
+
+	if (IR.sensbt23 == true) {
+	    btnbt23.setEnabled(true);
+	    btnbt23.addMouseListener(new MouseAdapter() {
+
+		public void mouseClicked(MouseEvent e) {
+		    if (sensbt23 == null) {
+			sensbt23 = new Panelecturasbt2(7);
+			sensbt23.getLbltitulo().setText("PLACA BT2-3");
+			sensbt23.repaint();
+		    }
+
+		    // Añado listeners al panel
+		    listenersetcbt2(IrrisoftConstantes.PLACA_BT2_7, sensbt23);
+		    IR.panelecturas.setVisible(false);
+		    IR.frmIrrisoft.getContentPane().add(sensbt23);
+		    sensbt23.setVisible(true);
+
+		}
+	    });
+	} else
+	    btnbt23.setEnabled(false);
+
+	if (IR.sensbt24 == true) {
+	    btnbt24.setEnabled(true);
+	    btnbt24.addMouseListener(new MouseAdapter() {
+
+		public void mouseClicked(MouseEvent e) {
+		    if (sensbt24 == null) {
+			sensbt24 = new Panelecturasbt2(8);
+			sensbt24.getLbltitulo().setText("PLACA BT2-4");
+			sensbt24.repaint();
+		    }
+
+		    // Añado listeners al panel
+		    listenersetcbt2(IrrisoftConstantes.PLACA_BT2_8, sensbt24);
+		    IR.panelecturas.setVisible(false);
+		    IR.frmIrrisoft.getContentPane().add(sensbt24);
+		    sensbt24.setVisible(true);
+
+		}
+	    });
+	} else
+	    btnbt24.setEnabled(false);
+
+	if (IR.hayplacasens) {
+	    btnplaca_sens.setEnabled(true);
+	    btnplaca_sens.addMouseListener(new MouseAdapter() {
+
+		public void mouseClicked(MouseEvent e) {
+
+		    if (sensens == null) {
+			sensens = new Panelecturasens(0);
+			sensens.getLbltitulo().setText("PLACA SENSORES");
+			sensens.repaint();
+		    }
+
+		    IR.panelecturas.listenersetcsens(IrrisoftConstantes.PLACA_SENSORES_0, sensens);
+		    IR.panelecturas.setVisible(false);
+		    sensens.repaint();
+		    IR.frmIrrisoft.getContentPane().add(sensens);
+		    IR.frmIrrisoft.repaint();
+		    sensens.setVisible(true);
+		}
+	    });
+	} else
+	    btnplaca_sens.setEnabled(false);
+
+    }
+
+    protected void listenersetcmci(int placa, Panelecturasmci panel) {
+
+	// Buclo por los sensores para añadir los listeners
+	// necesarios
+	for (int i = 0; i < IR.sensores.size(); i++) {
+
+	    if (IR.sensores.get(i).getNum_sensor().contains("Am")
+		    && IR.sensores.get(i).getNum_borna() == 29
+		    && IR.sensores.get(i).getNum_placa() == 1) {
+		nombreFinal = preguntarNombreSens(IR.sensores.get(i)
+			.getNum_sensor());
+		panel.getLblamperimetro().setText(nombreFinal + "-");
+		panel.getBtnButtonAmp().setVisible(true);
+		panel.getLbllecturamp().setText("");
+		IR.sensores.get(i).setLectura("");
+		IR.sensores.get(i).addPropertyChangeListener("lectura", panel);
+		// Asocio el sensor con la borna (botón) correspondiente del
+		    // panel
+		    panel.sensor1 = IR.sensores.get(i).getNum_sensor();
+	    }
+
+	    if (IR.sensores.get(i).getNum_placa() == placa) {
+		IR.sensores.get(i).setLectura("");
+		IR.sensores.get(i).setPulsos(-1);
+		IR.sensores.get(i).addPropertyChangeListener("pulsos", panel);
+		IR.sensores.get(i).addPropertyChangeListener("lectura", panel);
+
+		if (IR.sensores.get(i).getNum_borna() == 28
+			&& IR.sensores.get(i).getNum_sensor().contains("Pu")) {
+		    nombreFinal = preguntarNombreSens(IR.sensores.get(i)
+			    .getNum_sensor());
+		    panel.getLblbrCaudalimetro().setText(nombreFinal + "-");
+		    panel.getButtonPulsos().setVisible(true);
+		    panel.getButtonCaudal().setVisible(true);
+		    panel.getLblectpulsos().setText("");
+		    panel.getLblecturacaudal().setText("");
+		 // Asocio el sensor con la borna (botón) correspondiente del
+		    // panel
+		    panel.sensor2 = IR.sensores.get(i).getNum_sensor();
+
+		}
+
+		if (IR.sensores.get(i).getNum_borna() == 27) {
+		    nombreFinal = preguntarNombreSens(IR.sensores.get(i)
+			    .getNum_sensor());
+		    panel.getLblbr27().setText(nombreFinal + ":");
+		    panel.getButtonSensor3().setVisible(true);
+		    panel.getLblectbr27().setText("");
+		    // Asocio el sensor con la borna (botón) correspondiente del
+		    // panel
+		    panel.sensor3 = IR.sensores.get(i).getNum_sensor();
+
+		}
+		if (IR.sensores.get(i).getNum_borna() == 26) {
+		    nombreFinal = preguntarNombreSens(IR.sensores.get(i)
+			    .getNum_sensor());
+		    panel.getLblbr26().setText(nombreFinal + ":");
+		    panel.getButtonSensor2().setVisible(true);
+		    panel.getLblectbr26().setText("");
+		    // Asocio el sensor con la borna (botón) correspondiente del
+		    // panel
+		    panel.sensor4 = IR.sensores.get(i).getNum_sensor();
+		}
+
+		if (IR.sensores.get(i).getNum_borna() == 25) {
+		    nombreFinal = preguntarNombreSens(IR.sensores.get(i)
+			    .getNum_sensor());
+		    panel.getLblbr25().setText(nombreFinal + ":");
+		    panel.getButtonSensor1().setVisible(true);
+		    panel.getLblectbr25().setText("");
+		    // Asocio el sensor con la borna (botón) correspondiente del
+		    // panel
+		    panel.sensor5 = IR.sensores.get(i).getNum_sensor();
+
+		}
+		
+		
+	    }
+	    panel.sensores.add(IR.sensores.get(i));
+	}
+
+    }
+
+    protected void listenersetcsens(int placa, Panelecturasens panel) {
+
+	// Buclo por los sensores para añadir los listeners
+	// necesarios
+	for (int i = 0; i < IR.sensores.size(); i++) {
+	    if (IR.sensores.get(i).getNum_placa() == placa) {
+		IR.sensores.get(i).setLectura("");
+		IR.sensores.get(i).setPulsos(-1);
+		IR.sensores.get(i).addPropertyChangeListener("pulsos", panel);
+		IR.sensores.get(i).addPropertyChangeListener("lectura", panel);
+
+		if (IR.sensores.get(i).getNum_borna() == 1) {
+		    nombreFinal = preguntarNombreSens(IR.sensores.get(i)
+			    .getNum_sensor());
+		    panel.getTextoBorna1().setText(nombreFinal + ":");
+		    panel.getBotonSensor1().setVisible(true);
+		    panel.getLblectbr1().setText("");
+		    // Asocio el sensor con la borna (botón) correspondiente del
+		    // panel
+		    panel.sensor1 = IR.sensores.get(i).getNum_sensor();
+
+		} else if (IR.sensores.get(i).getNum_borna() == 2) {
+		    nombreFinal = preguntarNombreSens(IR.sensores.get(i)
+			    .getNum_sensor());
+		    panel.getTextoBorna2().setText(nombreFinal + ":");
+		    panel.getBotonSensor2().setVisible(true);
+		    panel.getLblectbr2().setText("");
+		    // Asocio el sensor con la borna (botón) correspondiente del
+		    // panel
+		    panel.sensor2 = IR.sensores.get(i).getNum_sensor();
+
+		} else if (IR.sensores.get(i).getNum_borna() == 3) {
+		    nombreFinal = preguntarNombreSens(IR.sensores.get(i)
+			    .getNum_sensor());
+		    panel.getTextoBorna3().setText(nombreFinal + ":");
+		    panel.getBotonSensor3().setVisible(true);
+		    panel.getLblectbr3().setText("");
+		    // Asocio el sensor con la borna (botón) correspondiente del
+		    // panel
+		    panel.sensor3 = IR.sensores.get(i).getNum_sensor();
+
+		} else if (IR.sensores.get(i).getNum_borna() == 4) {
+		    nombreFinal = preguntarNombreSens(IR.sensores.get(i)
+			    .getNum_sensor());
+		    panel.getTextoBorna4().setText(nombreFinal + ":");
+		    panel.getBotonSensor4().setVisible(true);
+		    panel.getLblectbr4().setText("");
+		    // Asocio el sensor con la borna (botón) correspondiente del
+		    // panel
+		    panel.sensor4 = IR.sensores.get(i).getNum_sensor();
+
+		} else if (IR.sensores.get(i).getNum_borna() == 5) {
+		    nombreFinal = preguntarNombreSens(IR.sensores.get(i)
+			    .getNum_sensor());
+		    panel.getTextoBorna5().setText(nombreFinal + ":");
+		    panel.getBotonSensor5().setVisible(true);
+		    panel.getLblectbr5().setText("");
+		    // Asocio el sensor con la borna (botón) correspondiente del
+		    // panel
+		    panel.sensor5 = IR.sensores.get(i).getNum_sensor();
+
+		} else if (IR.sensores.get(i).getNum_borna() == 6) {
+		    nombreFinal = preguntarNombreSens(IR.sensores.get(i)
+			    .getNum_sensor());
+		    panel.getTextoBorna6().setText(nombreFinal + ":");
+		    panel.getBotonSensor6().setVisible(true);
+		    panel.getLblectbr6().setText("");
+		    // Asocio el sensor con la borna (botón) correspondiente del
+		    // panel
+		    panel.sensor6 = IR.sensores.get(i).getNum_sensor();
+
+		} else if (IR.sensores.get(i).getNum_borna() == 7) {
+		    nombreFinal = preguntarNombreSens(IR.sensores.get(i)
+			    .getNum_sensor());
+		    panel.getTextoBorna7().setText(nombreFinal + ":");
+		    panel.getBotonSensor7().setEnabled(true);
+		    panel.getBotonSensor7().setVisible(true);
+		    panel.getLblectbr7().setText("");
+		    // Asocio el sensor con la borna (botón) correspondiente del
+		    // panel
+		    panel.sensor7 = IR.sensores.get(i).getNum_sensor();
+
+		} else if (IR.sensores.get(i).getNum_borna() == 8) {
+		    nombreFinal = preguntarNombreSens(IR.sensores.get(i)
+			    .getNum_sensor());
+		    panel.getTextoBorna8().setText(nombreFinal + ":");
+		    panel.getBotonSensor8().setVisible(true);
+		    panel.getLblectbr8().setText("");
+		    // Asocio el sensor con la borna (botón) correspondiente del
+		    // panel
+		    panel.sensor8 = IR.sensores.get(i).getNum_sensor();
+
+		} else if (IR.sensores.get(i).getNum_borna() == 9) {
+		    nombreFinal = preguntarNombreSens(IR.sensores.get(i)
+			    .getNum_sensor());
+		    panel.getTextoBorna9().setText(nombreFinal + ":");
+		    panel.getBotonSensor9().setVisible(true);
+		    panel.getLblectbr9().setText("");
+		    // Asocio el sensor con la borna (botón) correspondiente del
+		    // panel
+		    panel.sensor9 = IR.sensores.get(i).getNum_sensor();
+
+		} else if (IR.sensores.get(i).getNum_borna() == 10) {
+		    nombreFinal = preguntarNombreSens(IR.sensores.get(i)
+			    .getNum_sensor());
+		    panel.getTextoBorna10().setText(nombreFinal + ":");
+		    panel.getBotonSensor10().setVisible(true);
+		    panel.getLblectbr10().setText("");
+		    // Asocio el sensor con la borna (botón) correspondiente del
+		    // panel
+		    panel.sensor10 = IR.sensores.get(i).getNum_sensor();
+
+		} else if (IR.sensores.get(i).getNum_borna() == 11) {
+		    nombreFinal = preguntarNombreSens(IR.sensores.get(i)
+			    .getNum_sensor());
+		    panel.getTextoBorna11().setText(nombreFinal + ":");
+		    panel.getBotonSensor11().setVisible(true);
+		    panel.getLblectbr11().setText("");
+		    // Asocio el sensor con la borna (botón) correspondiente del
+		    // panel
+		    panel.sensor11 = IR.sensores.get(i).getNum_sensor();
+
+		} else if (IR.sensores.get(i).getNum_borna() == 12) {
+		    nombreFinal = preguntarNombreSens(IR.sensores.get(i)
+			    .getNum_sensor());
+		    panel.getTextoBorna12().setText(nombreFinal + ":");
+		    panel.getBotonSensor12().setVisible(true);
+		    panel.getLblectbr12().setText("");
+		    // Asocio el sensor con la borna (botón) correspondiente del
+		    // panel
+		    panel.sensor12 = IR.sensores.get(i).getNum_sensor();
+
+		} else if (IR.sensores.get(i).getNum_borna() == 13) {
+		    nombreFinal = preguntarNombreSens(IR.sensores.get(i)
+			    .getNum_sensor());
+		    panel.getTextoBorna13().setText(nombreFinal + ":");
+		    panel.getBotonSensor13().setVisible(true);
+		    panel.getLblectbr13().setText("");
+		    // Asocio el sensor con la borna (botón) correspondiente del
+		    // panel
+		    panel.sensor13 = IR.sensores.get(i).getNum_sensor();
+
+		} else if (IR.sensores.get(i).getNum_borna() == 14) {
+		    nombreFinal = preguntarNombreSens(IR.sensores.get(i)
+			    .getNum_sensor());
+		    panel.getTextoBorna14().setText(nombreFinal + ":");
+		    panel.getBotonSensor14().setVisible(true);
+		    panel.getLblectbr14().setText("");
+		    // Asocio el sensor con la borna (botón) correspondiente del
+		    // panel
+		    panel.sensor14 = IR.sensores.get(i).getNum_sensor();
+
+		} else if (IR.sensores.get(i).getNum_borna() == 15) {
+		    nombreFinal = preguntarNombreSens(IR.sensores.get(i)
+			    .getNum_sensor());
+		    panel.getTextoBorna15().setText(nombreFinal + ":");
+		    panel.getBotonSensor15().setVisible(true);
+		    panel.getLblectbr15().setText("");
+		    // Asocio el sensor con la borna (botón) correspondiente del
+		    // panel
+		    panel.sensor15 = IR.sensores.get(i).getNum_sensor();
+
+		}
+		panel.sensores.add(IR.sensores.get(i));
+	    }
+	    
+	}
+
+    }
+
+    protected void listenersetcbt2(int placa, Panelecturasbt2 panel) {
+
+	// Buclo por los sensores para añadir los listeners necesarios
+	for (int i = 0; i < IR.sensores.size(); i++) {
+
+	    if (IR.sensores.get(i).getNum_placa() == placa) {
+		IR.sensores.get(i).setLectura("");
+		IR.sensores.get(i).setPulsos(-1);
+		IR.sensores.get(i).addPropertyChangeListener("pulsos", panel);
+		IR.sensores.get(i).addPropertyChangeListener("lectura", panel);
+
+		if (IR.sensores.get(i).getNum_sensor().contains("Am")) {
+		    nombreFinal = preguntarNombreSens(IR.sensores.get(i)
+			    .getNum_sensor());
+		    panel.getLblamperimetro().setText(nombreFinal + "-");
+		    panel.getGraficaAmp().setVisible(true);
+		    panel.getLbllecturamp().setText("");
+		    // Asocio el sensor con la borna (botón) correspondiente del
+		    // panel
+		    panel.sensor1 = IR.sensores.get(i).getNum_sensor();
+		    
+		}
+
+		if (IR.sensores.get(i).getNum_sensor().contains("Pu")) {
+		    nombreFinal = preguntarNombreSens(IR.sensores.get(i)
+			    .getNum_sensor());
+		    panel.getLblcaudalimetro().setText(nombreFinal + "-");
+		    panel.getBtnGrafica().setVisible(true);
+		    panel.getBtnGraficaPulsos().setVisible(true);
+		    panel.getLblecturacau().setText("");
+		    panel.getLblecturapulsos().setText("");
+		    // Asocio el sensor con la borna (botón) correspondiente del
+		    // panel
+		    panel.sensor2 = IR.sensores.get(i).getNum_sensor();
+		}
+
+		if (IR.sensores.get(i).getNum_borna() == 2) {
+		    nombreFinal = preguntarNombreSens(IR.sensores.get(i)
+			    .getNum_sensor());
+		    panel.getLblsensor1().setText(nombreFinal + ":");
+		    panel.getButtonSensor1().setVisible(true);
+		    panel.getLblectsensor1().setText("");
+		    // Asocio el sensor con la borna (botón) correspondiente del
+		    // panel
+		    panel.sensor3 = IR.sensores.get(i).getNum_sensor();
+		}
+
+		if (IR.sensores.get(i).getNum_borna() == 3) {
+		    nombreFinal = preguntarNombreSens(IR.sensores.get(i)
+			    .getNum_sensor());
+		    panel.getLblsensor2().setText(nombreFinal + ":");
+		    panel.getButtonSensor2().setVisible(true);
+		    panel.getLblectsensor2().setText("");
+		    // Asocio el sensor con la borna (botón) correspondiente del
+		    // panel
+		    panel.sensor4 = IR.sensores.get(i).getNum_sensor();
+		}
+
+		if (IR.sensores.get(i).getNum_borna() == 4) {
+		    nombreFinal = preguntarNombreSens(IR.sensores.get(i)
+			    .getNum_sensor());
+		    panel.getLblsensor3().setText(nombreFinal + ":");
+		    panel.getButtonSensor3().setVisible(true);
+		    panel.getLblectsensor3().setText("");
+		    // Asocio el sensor con la borna (botón) correspondiente del
+		    // panel
+		    panel.sensor5 = IR.sensores.get(i).getNum_sensor();
+		}
+
+		if (IR.sensores.get(i).getNum_borna() == 5) {
+		    nombreFinal = preguntarNombreSens(IR.sensores.get(i)
+			    .getNum_sensor());
+		    panel.getLblsensor4().setText(nombreFinal + ":");
+		    panel.getButtonSensor4().setVisible(true);
+		    panel.getLblectsensor4().setText("");
+		    // Asocio el sensor con la borna (botón) correspondiente del
+		    // panel
+		    panel.sensor6 = IR.sensores.get(i).getNum_sensor();
+		}
+
+		if (IR.sensores.get(i).getNum_borna() == 6) {
+		    nombreFinal = preguntarNombreSens(IR.sensores.get(i)
+			    .getNum_sensor());
+		    panel.getLblsensor5().setText(nombreFinal + ":");
+		    panel.getButtonSensor5().setVisible(true);
+		    panel.getLblectsensor5().setText("");
+		 // Asocio el sensor con la borna (botón) correspondiente del
+		    // panel
+		    panel.sensor7 = IR.sensores.get(i).getNum_sensor();
+
+		}
+
+		if (IR.sensores.get(i).getNum_borna() == 7) {
+		    nombreFinal = preguntarNombreSens(IR.sensores.get(i)
+			    .getNum_sensor());
+		    panel.getLblsensor6().setText(nombreFinal + ":");
+		    panel.getButtonSensor6().setVisible(true);
+		    panel.getLblectsensor6().setText("");
+		    // Asocio el sensor con la borna (botón) correspondiente del
+		    // panel
+		    panel.sensor8 = IR.sensores.get(i).getNum_sensor();
+
+		}
+
+		if (IR.sensores.get(i).getNum_borna() == 8) {
+		    nombreFinal = preguntarNombreSens(IR.sensores.get(i)
+			    .getNum_sensor());
+		    panel.getLblsensor7().setText(nombreFinal + ":");
+		    panel.getButtonSensor7().setVisible(true);
+		    panel.getLblectsensor7().setText("");
+		    // Asocio el sensor con la borna (botón) correspondiente del
+		    // panel
+		    panel.sensor9 = IR.sensores.get(i).getNum_sensor();
+		}
+
+		// Añado el sensor a la lista de sensores del panel
+		panel.sensores.add(IR.sensores.get(i));
+	    }
+	}
+    }
+
+    /**
+     * Miro el sensor que tengo y lo transformo en su nombre original.
+     * 
+     * @param nombre
+     * @return
+     */
+    private String preguntarNombreSens(String nombre) {
+	String valorNombre = null;
+	nombre = nombre.substring(0, 2);
+	Sensor s = new Sensor();
+	int valor = 0;
+	if (nombre.contains("Te")) {
+	    valor = 1;
+	} else if (nombre.contains("An")) {
+	    valor = 2;
+	} else if (nombre.contains("Pl")) {
+	    valor = 3;
+	} else if (nombre.contains("Hu")) {
+	    valor = 4;
+	} else if (nombre.contains("Pu")) {
+	    valor = 5;
+	} else if (nombre.contains("Am")) {
+	    valor = 6;
+	} else
+	    valor = 0;
+	s.setCodSensor(valor);
+	valorNombre = s.toString();
+	return valorNombre;
+    }
+
+    /**
+     * Redimensionado iconos botones
+     * 
+     * @param JButton
+     *            boton
+     * @param String
+     *            ruta
+     */
+    public void redimensionado_icono(JButton boton, String ruta) {
+	Image img = new ImageIcon(Irrisoft.class.getResource(ruta)).getImage();
+	Image newimg = img.getScaledInstance(boton.getWidth() / 3,
+		boton.getHeight() - 2, java.awt.Image.SCALE_SMOOTH);
+	boton.setIcon(new ImageIcon(newimg));
+    }
+
+    /**
+     * Pone los listeners necesarios a la gráfica correspondiente
+     * 
+     * @param String
+     *            tiposens
+     * @param int tipoplaca
+     */
+    protected synchronized void ponelistenersalchart(GraficaSensor grafica,
+	    String tiposens, int borna, JButton boton, JLabel label,
+	    int numplaca) {
+
+	String tipolistener = "";
+	Sensor sensor = null;
+	boolean pulsos = false;
+
+	// // Si el sensor es amperimetro o caudalimetro
+	// if (borna == -1) {
+	// System.out.println("BORNA " + borna);
+	// if (tiposens.contentEquals("Am")) {
+	// grafica.setEjex("Intensidad");
+	// tipolistener = "lectura";
+	//
+	// } else if (tiposens.contentEquals("Pu")) {
+	// if (boton.getText().contains("pulsos")) {
+	// grafica.setEjex("Pulsos nuevos");
+	// tipolistener = "pulsos";
+	// pulsos = true;
+	// } else {
+	// grafica.setEjex("Caudal");
+	// tipolistener = "lectura";
+	// }
+	// }
+	//
+	// } else {
+	// // Si el sensor es de cualquier tipo
+	// System.out.println("BORNA " + borna);
+	// tipolistener="lectura";
+	//
+	// }
+
+	// Recojo el sensor correspondiente y lo asocio a la gráfica
+	for (int i = 0; i < IR.sensores.size(); i++) {
+	    if (IR.sensores.get(i).getNum_placa() == numplaca
+		    && IR.sensores.get(i).getNum_sensor().contains(tiposens)) {
+		
+		sensor = IR.sensores.get(i);
+
+		// Asocio los listeners según el sensor que sea
+		if (tiposens.contains("Am")) {
+		    grafica.setEjex("Intensidad");
+		    tipolistener = "lectura";
+		} else if (tiposens.contains("Pu")) {
+		    if (boton.getText().contains("pulsos")) {
+			grafica.setEjex("Pulsos nuevos");
+			tipolistener = "pulsos";
+			pulsos = true;
+		    } else {
+			grafica.setEjex("Caudal");
+			tipolistener = "lectura";
+		    }
+
+		} else if (tiposens.contains("An")) {
+		    grafica.setEjex("Velocidad  viento");
+		    tipolistener = "lectura";
+		} else if (tiposens.contains("Pl")) {
+		    grafica.setEjex("Milimetros  *  m²");
+		    tipolistener = "lectura";
+		} else if (tiposens.contains("Temp")) {
+		    grafica.setEjex("Temperatura  ext" + sensor.getUni_med());
+		    tipolistener = "lectura";
+		} else if (tiposens.contains("Hum")) {
+		    grafica.setEjex("Humedad  suelo");
+		    tipolistener = "lectura";
+		} else if (tiposens.contains("In")) {
+
+		}
+
+		grafica.sensor = sensor;
+		grafica.sensor.addPropertyChangeListener(tipolistener, grafica);
+		break;
+	    }
+	}
+
+	System.out.println("SENSOR: " + sensor.getNum_sensor());
+
+	if (pulsos)
+	    grafica.setUni_medida("pulsos");
+	else
+	    grafica.setUni_medida(sensor.getUni_med());
+
+	grafica.setTitle(sensor.getNum_sensor() + " - " + label.getText());
+	grafica.setEjey("Hora");
+
+	// Creo el hilo de la gráfica
+	Thread hilochart = new Thread(grafica);
+	hilochart.start();
+
+    }
+
+}

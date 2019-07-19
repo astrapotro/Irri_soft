@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">
+<refactoring comment="Copy element &apos;Alerta.java&apos; to &apos;GestDropper_Diario_Agua/src/principal&apos;&#x0A;- Original project: &apos;GestDropper_Alertas&apos;&#x0A;- Destination element: &apos;GestDropper_Diario_Agua/src/principal&apos;&#x0A;- Original element: &apos;principal.Alerta.java&apos;" description="Copy compilation unit" destination="=GestDropper_Diario_Agua/src&lt;principal" element1="/src&lt;principal{Alerta.java" files="0" flags="589830" folders="0" id="org.eclipse.jdt.ui.copy" policy="org.eclipse.jdt.ui.copyResources" stamp="1436530345050" units="1" version="1.0"/>
+</session>

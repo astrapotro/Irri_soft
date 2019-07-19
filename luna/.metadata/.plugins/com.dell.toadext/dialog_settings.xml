@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<section name="Workbench">
+	<section name="com.dell.toadext.connection.actions.LinkWithEditorAction">
+		<item value="false" key="active"/>
+	</section>
+	<section name="com.dell.toadext.mysql.ui.editor.MySqlRoutineEditorExtension">
+		<section name="editorWeights">
+			<item value="1" key="rsWeight"/>
+			<item value="1" key="editorWeight"/>
+		</section>
+		<section name="saveToFile">
+		</section>
+	</section>
+	<section name="com.dell.toadext.ui.dependencies.DependenciesView$ShowUsesAction">
+		<item value="true" key="active"/>
+	</section>
+	<section name="com.dell.toadext.connection.view.handlers.GroupByDbHandler">
+	</section>
+	<section name="com.dell.toadext.javaeditor.extensions.ShowJavaFilesAction">
+		<item value="false" key="active"/>
+	</section>
+	<section name="com.dell.toadext.connection.monitor.DbmsOutputView">
+		<section name="saveToFile">
+		</section>
+	</section>
+	<section name="com.dell.toadext.detailbrowser.AbstractColumnsViewer$ShowCommentAction">
+		<item value="false" key="active"/>
+	</section>
+	<section name="com.dell.toadext.connection.monitor.AbstractConnectionMonitorView$EnableAction">
+		<item value="false" key="active"/>
+	</section>
+	<section name="com.dell.toadext.schemabrowser.actions.DisplayDescribeObjectEditorAction">
+		<item value="false" key="active"/>
+	</section>
+	<section name="com.dell.toadext.schemabrowser.actions.LinkWithEditorAction">
+		<item value="false" key="active"/>
+	</section>
+	<section name="com.dell.toadext.mysql.ui.detailViewer.MySqlTableTriggersViewer">
+	</section>
+	<section name="com.dell.toadext.plsqlviewer.pldoc.QuickDocView$LinkWithSelectionAction">
+		<item value="true" key="active"/>
+	</section>
+	<section name="com.dell.toadext.ui.dependencies.DependenciesView$ShowUsedByAction">
+		<item value="false" key="active"/>
+	</section>
+	<section name="com.dell.toadext.connection.monitor.AbstractConnectionMonitorView$LockAction">
+		<item value="false" key="active"/>
+	</section>
+	<section name="com.dell.toadext.connection.monitor.SqlMonitorView">
+		<section name="saveToFile">
+		</section>
+	</section>
+	<section name="com.dell.toadext.mysql.ui.detailViewer.MySqlConstraintsViewer">
+	</section>
+	<section name="com.dell.toadext.detailbrowser.viewer.AbstractQueryResultViewer$SortColumnsAction">
+		<item value="false" key="active"/>
+	</section>
+	<section name="com.dell.toadext.editor.SqlEditorExtension$HideResultSetAction">
+		<item value="false" key="active"/>
+	</section>
+	<section name="com.dell.toadext.mysql.ui.detailViewer.MySqlTableColumnsViewer">
+	</section>
+	<section name="com.dell.toadext.ui.dependencies.actions.ShowEditorsAction">
+		<item value="false" key="active"/>
+	</section>
+	<section name="com.dell.toadext.editor.SqlEditorExtension$RightAlignResultSet">
+		<item value="false" key="active"/>
+	</section>
+	<section name="com.dell.toadext.mysql.ui.detailViewer.MySqlViewColumnsViewer">
+	</section>
+	<section name="com.dell.toadext.editor.SqlEditorExtension$BottomAlignResultSet">
+		<item value="false" key="active"/>
+	</section>
+	<section name="com.dell.toadext.mysql.ui.detailViewer.MySqlIndexesViewer">
+	</section>
+	<section name="com.dell.toadext.mysql.ui.dialogs.MySqlOpenDatabaseObjectDialog">
+		<item value="true" key="ShowStatusLine"/>
+		<item value="&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;&#x0A;&lt;History/&gt;" key="History"/>
+		<section name="DialogBoundsSettings">
+			<item value="600" key="DIALOG_WIDTH"/>
+			<item value="1|Cantarell|11.0|0|GTK|1|" key="DIALOG_FONT_NAME"/>
+			<item value="500" key="DIALOG_HEIGHT"/>
+			<item value="660" key="DIALOG_X_ORIGIN"/>
+			<item value="22" key="DIALOG_Y_ORIGIN"/>
+		</section>
+	</section>
+	<section name="com.dell.toadext.detailbrowser.AbstractColumnsViewer$SortColumnsAction">
+		<item value="true" key="active"/>
+	</section>
+</section>

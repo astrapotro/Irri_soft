@@ -1,0 +1,27 @@
+﻿<Properties>
+  <MonoDevelop.Ide.Workspace ActiveConfiguration="Debug" />
+  <MonoDevelop.Ide.Workbench ActiveDocument="CPROGRAMA.vb">
+    <Files>
+      <File FileName="IRRIGESTDB.vb" Line="25" Column="32" />
+      <File FileName="CONEXION.vb" Line="28" Column="62" />
+      <File FileName="CPROGRAMA.vb" Line="110" Column="22" />
+      <File FileName="T02.vb" Line="1" Column="1" />
+      <File FileName="TABEXE.vb" Line="1" Column="1" />
+      <File FileName="DATOSCONEXION.vb" Line="1" Column="1" />
+    </Files>
+    <Pads>
+      <Pad Id="ProjectPad">
+        <State expanded="True">
+          <Node name="DBVOLCADO" expanded="True">
+            <Node name="CONEXION.vb" expanded="True" />
+            <Node name="CPROGRAMA.vb" selected="True" />
+          </Node>
+        </State>
+      </Pad>
+    </Pads>
+  </MonoDevelop.Ide.Workbench>
+  <MonoDevelop.Ide.DebuggingService.Breakpoints>
+    <BreakpointStore />
+  </MonoDevelop.Ide.DebuggingService.Breakpoints>
+  <MonoDevelop.Ide.DebuggingService.PinnedWatches />
+</Properties>

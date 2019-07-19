@@ -1,0 +1,1540 @@
+package sensorespack;
+
+import irrisoftpack.Irrisoft;
+import irrisoftpack.IrrisoftConstantes;
+import irrisoftpack.SerialDriver;
+
+import java.beans.PropertyChangeEvent;
+import java.beans.PropertyChangeListener;
+import java.sql.Timestamp;
+import java.text.DecimalFormat;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Calendar;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashSet;
+
+import javax.xml.bind.ParseConversionEvent;
+
+import jssc.SerialPortException;
+import jssc.SerialPortTimeoutException;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import programapack.ListaProgsaexec;
+import programapack.Programacion;
+import valvulaspack.Valvula;
+import alertaspack.GestorAlertas;
+//import java.sql.Date;
+
+//import java.io.IOException;
+
+public class HiloCaudalimetro extends Sensor implements Runnable,
+	PropertyChangeListener {
+
+    private static Logger logger = LogManager.getLogger(HiloCaudalimetro.class
+	    .getName());
+
+    protected SerialDriver serialcon;
+    protected int tipoplaca, len, leo, i, repeticion = 0;
+    protected int valvsabiertasant = 0, valvsabiertas = 0;
+    protected int[] pulsos = new int[2];
+    protected int pulso = 0;
+    protected int nuevospulsos = 0;
+    protected byte[] bufferresp = new byte[6];
+    protected LecturasSensor lectConsumoDiarioAgua = new LecturasSensor();
+
+    // TODO El byte 5 se ha de poner con sens.getnumborna para múltiples
+    // caudalimetros!!!
+    // protected byte[] buftrans = { (byte) 0x06, (byte) 0x00, (byte) 0x03,
+    // (byte) 0x00, (byte) 0x01, (byte) 0x0A };
+
+    // Mascara para desechar el bit 7 de la respuesta de la bt2
+    // protected static byte mascara = (byte) 0b01111111;
+
+    protected int vueltasens = 0;
+
+    private int tiempoduerme = 0;
+    private double lapsotiempo = 0;
+    public int pulsosparciales = 0;
+    public int vuelta = 0;
+    public int tipovalv;
+    public String numvalv;
+    private long tiempoini;
+    public Valvula valv;
+    private Sensor sens;
+
+    private float caudal;
+
+    public boolean primera = true;
+    private boolean first = true;
+
+    private int pulsosdiarios = 0;
+    // Variable de Gestor Alertas
+    private GestorAlertas gestorAlertas;
+    // Variable de Irrisoft
+    private Irrisoft IR;
+    // Variable para matar el Hilo y sincronizar.
+    private boolean rearmarCau = false;
+    Calendar cal;
+    // Creo el objeto Lectura Sensor.
+    LecturasSensor lectura = new LecturasSensor();
+    // Flag par controlar si hemos empezado otro dia.
+
+    public boolean resetConsumoDiarioAgua = false;
+
+    private Timestamp fechaConsumoAgua = null;
+
+    public boolean circuito_vacio = true;
+    protected static SimpleDateFormat formatterfecha = new SimpleDateFormat(
+	    "yyyy-MM-dd");
+
+    // private boolean primerCaudal = true;
+    private int contadorExceso = 0;
+    private int contadorDefecto = 0;
+    private int cuantasmaestrasabiertas = 0;
+    
+ // Dar formato al caudal
+    protected DecimalFormat df = new DecimalFormat("#.###");
+
+    private boolean diferenciavalvs = false;
+
+    private LinkedHashSet<Valvula> valvsopenant = new LinkedHashSet<Valvula>();
+    public ArrayList<Valvula> valvsabiertashidro = new ArrayList<Valvula>();
+
+    public HiloCaudalimetro(SerialDriver serial, int tipo, int tipovalv,
+	    Sensor sens) {
+
+	this.serialcon = serial;
+	this.tipoplaca = tipo;
+	this.tipovalv = tipovalv;
+	this.sens = sens;
+	gestorAlertas = GestorAlertas.getInstance();
+	this.IR = Irrisoft.window;
+
+    }
+
+    /**
+     * Este es el Hilo Principal de Amperimetro
+     * 
+     * @see java.lang.Runnable#run()
+     */
+    public void run() {
+
+	// Duermo para dar tiempo
+	IR.esperarTiempo(IrrisoftConstantes.DELAY_SENSOR_RUN
+		+ (tipoplaca * IrrisoftConstantes.A_MSGS), "Caudalimetro");
+
+	pulsos[0] = 0;
+	pulsos[1] = 0;
+
+	// Si el puerto serie no esta conectado lo reconecto.
+	// serialcon.reconexionPuerto(serialcon, sens);
+
+	while (true) {
+
+	    // Dejo que muera el hilo si irrisoft ha sido rearmado
+	    // (sincronización)
+	    if (rearmarCau) {
+		logger.warn("Termino el hilo de Caudalimetro porque se ha rearmado Irrisoft");
+		return;
+	    }
+
+	    if (IR.test == false) {
+
+		automatico();
+
+	    } else if (IR.test == true) {
+
+		// Espero hasta que el hilo test me avise de que el circuito
+		// está lleno
+		if (circuito_vacio) {
+
+		    // Espero a hilotest
+		    synchronized (IR.hilocau) {
+			try {
+			    IR.hilocau.wait();
+			} catch (InterruptedException e) {
+			    if (logger.isErrorEnabled()) {
+				logger.error("Hilo Interrumpido: "
+					+ e.getMessage());
+			    }
+			}
+		    }
+
+		    // Duermo 10 segs para que le de tiempo a hilotest a iniciar
+		    // el encendido
+		    IR.esperarTiempo(IrrisoftConstantes.DELAY_SENSOR_10SEG,
+			    "Caudalimetro");
+
+		    circuito_vacio = false;
+		}
+		test();
+	    }
+	}
+    }
+
+    /**
+     * Metodo principal del Caudalimetro.
+     */
+    public void automatico() {
+
+	try {
+	    // Miro cúantas maestras están abiertas
+	    cuantasmaestrasabiertas = 0;
+
+	    for (int i = 0; i < IR.valvsmaestras.size(); i++) {
+		if (IR.valvsmaestras.get(i).isAbierta()) {
+		    cuantasmaestrasabiertas++;
+		}
+	    }
+
+	    if (IR.test == true)
+		return;
+
+	    // Mirar valvulas abiertas
+	    valvsabiertas = IR.valvsabiertas(0) - cuantasmaestrasabiertas;
+
+	    if (logger.isInfoEnabled()) {
+		logger.info("Valvsabiertas: " + valvsabiertas);
+		logger.info("Cuantasabiertasmaestras: "
+			+ cuantasmaestrasabiertas);
+	    }
+	    // Estabilzamos el circuito si es necesario
+	    if ((valvsabiertasant == 0 && valvsabiertas > 0)
+		    || (valvsabiertasant > 0 && valvsabiertas == 0)) {
+
+		System.out
+			.println("ESTABILIZANDO CIRCUITO HIDRAULICO. Espere...");
+		// Estabilizamos el circuito
+		IR.esperarTiempo(IrrisoftConstantes.DELAY_EST_CIRCUITO,
+			"automatico");
+
+		cuentapulsoslapso();
+		pulsosparciales = 0;
+	    }
+
+	    // ////////////// Si no hay ninguna abierta
+	    if (valvsabiertas == 0)
+		autoSinValvsOpen();
+	    // ////////////////////// Si hay alguna abierta
+	    else if (valvsabiertas > 0)
+		autoConValvsOpen();
+
+	    else if (valvsabiertas < 0)
+		IR.esperarTiempo(5000, "automatico");
+	} catch (Exception e) {
+	    // TODO Auto-generated catch block
+	    e.printStackTrace();
+	    IR.escribetextPane(e.getMessage(), IR.normal, true);
+	}
+    }
+
+    private void autoSinValvsOpen() {
+
+	try {
+	    // Actualizo las valvulas anteriores a las actuales
+	    valvsabiertasant = valvsabiertas;
+
+	    // Inicializo variables;
+	    vuelta = -1;
+
+	    // tiempoini = System.nanoTime();
+
+	    // tiempoduerme = sens.getFrec_lect();
+	    tiempoduerme = 30000;
+
+	    while (tiempoduerme > 0) {
+		if (diferenciavalvs) {
+		    diferenciavalvs = false;
+		} else {
+		    tiempoini = System.nanoTime();
+		    pulsosparciales = 0;
+		}
+
+		// Miro valvulas abiertas para salir si hay alguna abierta
+		valvsabiertas = IR.valvsabiertas(0) - cuantasmaestrasabiertas;
+
+		// Si se va a hacer un test()
+		if (IR.test || rearmarCau || valvsabiertas > 0)
+		    return;
+
+		IR.esperarTiempo(IrrisoftConstantes.DELAY_SENSOR_10SEG,
+			"autoSinValvsOpen");
+
+		tiempoduerme = tiempoduerme - 10000;
+
+		if (logger.isInfoEnabled()) {
+
+		    logger.info("Estoy en automatico sin valvs abiertas");
+
+		}
+
+		int pul = cuentapulsoslapso();
+
+		// Miro valvulas abiertas para salir si hay alguna abierta
+		valvsabiertas = IR.valvsabiertas(0) - cuantasmaestrasabiertas;
+
+		// si hay alguna abierta salgo del bucle
+		if (valvsabiertas > 0 || IR.test || rearmarCau)
+		    return;
+
+		calculacaudal();
+
+		// Miro valvulas abiertas para salir si hay alguna abierta
+		valvsabiertas = IR.valvsabiertas(0) - cuantasmaestrasabiertas;
+
+		// si hay alguna abierta salgo del bucle
+		if (valvsabiertas > 0 || IR.test || rearmarCau)
+		    return;
+
+		if (pul >= 1 && valvsabiertas == 0 && !first
+			&& tiempoduerme == 0) {
+		    // hay una fuga de agua ya que no hay valvulas
+		    // abiertas y estoy recibiendo pulsos
+
+		    pulso = pulso + pul;
+
+		    IR.escribetextPane("\n\tALARMA! FUGA de AGUA ", IR.negrita,
+			    false);
+		    IR.escribetextPane("en el sistema hidráulico", IR.normal,
+			    false);
+		    IR.escribetextPane(
+			    "\n\tValvulas abiertas=0 , consumo acomulado: "
+				    + pulso
+				    * sens.getK()
+				    + " ls\n\t\t\t\t"
+				    + new Timestamp(Calendar.getInstance()
+					    .getTime().getTime()), IR.normal,
+			    false);
+
+		    logger.error("\n\tALARMA! FUGA de AGUA en el sistema hidráulico\n\tValvulas abiertas=0 , consumo acomulado: "
+			    + pulso
+			    * sens.getK()
+			    + " ls\n\t\t\t"
+			    + new Timestamp(Calendar.getInstance().getTime()
+				    .getTime()));
+
+		    // Genero alarma: Fuga de agua en instalacion o fallo de
+		    // valvula maestra.
+		    gestorAlertas.insertarAlarma(1002, (pulso * sens.getK())
+			    + " ls ");
+
+		    logger.info("\nEn consecuencia se van a cerrar las válvulas maestras!");
+		    // Cierro la válvula maestra para que se corte la fuga
+		    IR.panelbt2.crea_hilo_maestra(false);
+		    // calculacaudalauto();
+
+		} else if (pul == 0) {
+		    pulso = 0;
+		    logger.info("No hay pulsos = No hay consumo de agua");
+
+		}
+
+		first = false;
+
+	    }
+	} catch (Exception e) {
+	    if (logger.isErrorEnabled()) {
+		logger.error("Error en autoSinValvsOpen: " + e.getMessage());
+	    }
+	    e.printStackTrace();
+	    IR.escribetextPane(e.getMessage(), IR.normal, true);
+	}
+
+    }
+
+    private void autoConValvsOpen() {
+
+	try {
+	    vuelta = -1;
+
+	    // Actualizo las valvulas anteriores a las actuales
+	    valvsabiertasant = valvsabiertas;
+
+	    valvsopenant.clear();
+
+	    for (Iterator<Valvula> v = IR.valvsabiertastot.iterator(); v
+		    .hasNext();) {
+		valvsopenant.add(v.next());
+	    }
+
+	    // TODO Tendra que ser dinámico el periodo lectura de BBDD local
+	    // (65)
+	    tiempoduerme = 65;
+
+	    if (logger.isInfoEnabled()) {
+		logger.info("estoy en automatico con valvs abiertas");
+	    }
+
+	    if (!diferenciavalvs) {
+		tiempoini = System.nanoTime();
+		pulsosparciales = 0;
+	    }
+
+	    while (tiempoduerme > 0) {
+
+		if (IR.test || rearmarCau)
+		    return;
+
+		if (vuelta > -1) {
+		    IR.esperarTiempo(IrrisoftConstantes.DELAY_SENSOR_5SEG,
+			    "autoConValvsOpen");
+		    tiempoduerme = tiempoduerme - 5;
+		}
+
+		vuelta++;
+
+		if (logger.isInfoEnabled()) {
+		    logger.info("Vuelta en automatico con valvs abiertas: "
+			    + vuelta);
+		}
+
+		System.out.println("Valvsopenant: ");
+
+		for (Iterator<Valvula> va = valvsopenant.iterator(); va
+			.hasNext();) {
+		    System.out.print(va.next().getCodelecvalv() + " , ");
+
+		}
+
+		System.out.println("\nValvsabiertastot: ");
+		for (Iterator<Valvula> v = IR.valvsabiertastot.iterator(); v
+			.hasNext();) {
+		    System.out.print(v.next().getCodelecvalv() + " , ");
+
+		}
+		System.out.println("\n");
+
+		if (IR.comparaListasValvs(valvsopenant, IR.valvsabiertastot)) {
+
+		    // Si es la primera vuelta
+		    if (vuelta == 0) {
+			if (logger.isInfoEnabled()) {
+			    logger.info("VUELTA 0");
+			}
+			// Para que desestime los
+			// primeros 60 segundos -MODIFICABLE !!!! TODO
+			// CAMBIAAAAR
+			// Thread.sleep(tiempo_est_circuito);
+			// if (primerCaudal == true) {
+			cuentapulsoslapso();
+			// primerCaudal = false;
+			// } else {
+			// continue;
+			// }
+
+		    }
+
+		    // Si ha pasado un minuto desdela primera vuelta
+		    else if (vuelta == 13) {
+			if (logger.isInfoEnabled()) {
+			    logger.info("VUELTA 13");
+			}
+			cuentapulsoslapso();
+
+			if (pulsosparciales >= 25) {
+
+			    // Calcular el consumo
+			    calculacaudalauto();
+			} else {
+			    vuelta = 13;
+			    tiempoduerme = 60;
+			    // vuelta = -1;
+			    // tiempoduerme = 65;
+			    continue;
+			}
+
+		    }
+		    // Si han pasado 2 minutos
+		    else if (vuelta == 25) {
+
+			if (logger.isInfoEnabled()) {
+			    logger.info("VUELTA 25");
+			}
+
+			cuentapulsoslapso();
+
+			if (pulsosparciales >= 3) {
+			    // Calcular el consumo
+			    calculacaudalauto();
+			} else {
+			   // vuelta = -1;
+			    tiempoduerme = 5;
+			    continue;
+			}
+		    }
+		    // Si han pasado más de 2 minutos
+		    else if (vuelta > 25) {
+			if (logger.isInfoEnabled()) {
+			    logger.info("VUELTA > 25");
+			}
+			cuentapulsoslapso();
+
+			if (pulsosparciales >= 3) {
+			    // calcular el consumo
+			    calculacaudalauto();
+			} else {
+			    vuelta = -1;
+			    tiempoduerme = 5;
+			    continue;
+			}
+		    }
+
+		} else {
+		    // primerCaudal = true;
+		    diferenciavalvs = true;
+		    // Si se va a hacer un test()
+		    if (IR.test == true)
+			return;
+
+		    if (logger.isInfoEnabled()) {
+			logger.info("VALVSABIERTAS != VALVSABIERTASANT , estabilizo el circuito");
+		    }
+
+		    // Tiempo de margen para que estabilice el agua
+		    long i = IrrisoftConstantes.DELAY_EST_VALV;
+
+		    while (i >= 0) {
+			IR.esperarTiempo(10000,
+				"espera cambio de num de valvulas");
+			i = i - 10000;
+			// Si se va a hacer un test()
+			if (IR.test == true) {
+			    logger.info("Se sale del bucle estabilizador circuito");
+			    return;
+			}
+			cuentapulsos();
+			pulsosparciales = 0;
+		    }
+
+		    // cuentapulsos();
+		    // pulsosparciales = 0;
+		    tiempoini = System.nanoTime();
+
+		    return;
+		}
+
+	    }
+	} catch (Exception e) {
+	    if (logger.isErrorEnabled()) {
+		logger.error("Error en autoConValsOpen: " + e.getMessage());
+	    }
+	    e.printStackTrace();
+	    IR.escribetextPane(e.getMessage(), IR.normal, true);
+	}
+
+    }
+
+    /**
+     * Devuelve los pulsos en uninstante de tiempo.
+     * 
+     * @return Pulsos
+     */
+    public int cuentapulsoslapso() {
+
+	int puls = 0;
+	long tiempoin = (System.nanoTime());
+	puls = cuentapulsos();
+	long lapso = System.nanoTime() - tiempoin;
+	lapsotiempo = lapso / Math.pow(10, 9);
+
+	return puls;
+
+    }
+
+    /**
+     * Cuento los pulsos en las diferentes placas.
+     * 
+     * @return Nuevos Pulsos
+     */
+    public int cuentapulsos() {
+
+	try {
+	    nuevospulsos = 0;
+
+	    if (logger.isInfoEnabled()) {
+		logger.info("Hola estoy en cuentapulsos");
+	    }
+
+	    // Si el caudalimetro está acoplado a una bt2
+	    if (tipoplaca >= 5) {
+		cuentapulsosbt2();
+	    }
+
+	    // Si el caudalimetro está conectado a una placa de gontzi
+	    else if (tipoplaca < 5) {
+		cuentapulsosmci();
+
+	    }
+
+	    // Si hay nuevos pulsos
+	    if (pulsos[1] != 0) {
+
+		if (nuevospulsos < 0) {
+
+		    vueltasens++;
+		    nuevospulsos = 128 + (pulsos[1] - pulsos[0]);
+
+		    nuevospulsos = Math.abs(nuevospulsos);
+
+		    if (logger.isInfoEnabled()) {
+			logger.info("Pulsos nuevos en este bucle (Vuelta "
+				+ vueltasens + " : " + nuevospulsos);
+		    }
+		}
+
+		// Si es la primera vez que entra en el caudalimetro
+		if (first) {
+		    nuevospulsos = 0;
+		    pulsosparciales = 0;
+		    pulsosdiarios = 0;
+		    first = false;
+		}
+
+	    } else
+		nuevospulsos = 0;
+
+	    if (!first) {
+
+		// Guardo la lectura de los pulsos diarios en la
+		// BBDD Local si no es la primera lectura
+
+		calculapulsosdiarios();
+
+		int consumoAcu = (pulsosdiarios + nuevospulsos) * sens.getK();
+		// Cojo la fecha del sistema para insertar una nueva fila.
+
+		if (resetConsumoDiarioAgua) {
+
+		    cal = Calendar.getInstance();
+		    java.sql.Timestamp dateRiego = new java.sql.Timestamp(
+			    cal.getTimeInMillis());
+		    // Pongo el valor de dateRiego en la variable de memoria
+		    fechaConsumoAgua = dateRiego;
+		    pulsosdiarios = 0;
+		    consumoAcu = (pulsosdiarios + nuevospulsos) * sens.getK();
+		    IR.escribetextPane("\nReseteo del consumo diario de Agua: "
+			    + consumoAcu, IR.normal, false);
+		    resetConsumoDiarioAgua = false;
+		}
+
+		// /Actualizo la lectura de consumo diario acomulado en la
+		// variable
+		// lectCaudalimetro memoria
+		lectConsumoDiarioAgua.setNombreSensor(sens.getNum_sensor());
+		lectConsumoDiarioAgua.setFecha(fechaConsumoAgua);
+		lectConsumoDiarioAgua.setRiego(consumoAcu);
+		lectConsumoDiarioAgua.setVelocidadAnemometro(0);
+		lectConsumoDiarioAgua.setLluvia(0);
+		lectConsumoDiarioAgua.setTemperatura(0);
+		lectConsumoDiarioAgua.setIntru(false);
+
+		// Inserto o cambio el valor de la fila de riego.
+		IR.hiloescucha.connDB
+			.insertarLecturasBBDD(lectConsumoDiarioAgua);
+
+	    }
+
+	    if (logger.isInfoEnabled()) {
+		logger.info("Pulsos nuevos en este bucle: " + nuevospulsos
+			+ " y pulsos diarios: " + pulsosdiarios);
+	    }
+	    System.out.println("Diferenciavalvs: " + diferenciavalvs);
+
+	    sens.setPulsos(nuevospulsos);
+
+	    // Actualizo variables de pulsos
+	    if (vuelta == 0) {
+
+		pulsosdiarios = pulsosdiarios + nuevospulsos;
+
+		if (!IR.test)
+		    pulsosparciales = 0;
+		// pulsosparciales = pulsosparciales + nuevospulsos;
+		else {
+		    pulsosparciales = 0;
+		    tiempoini = System.nanoTime();
+		}
+
+		nuevospulsos = 0;
+
+	    } else {
+		pulsosparciales = pulsosparciales + nuevospulsos;
+		pulsosdiarios = pulsosdiarios + nuevospulsos;
+	    }
+
+	    if (diferenciavalvs)
+		diferenciavalvs = false;
+
+	    if (logger.isInfoEnabled()) {
+		logger.info("Pulsos nuevos: " + nuevospulsos);
+		logger.info("Pulsos parciales: " + pulsosparciales);
+		logger.info("Pulsos totales diarios: " + pulsosdiarios);
+
+	    }
+
+	} catch (Exception e) {
+	    if (logger.isErrorEnabled()) {
+		logger.error("Error en cuentaPulsos: " + e.getMessage());
+	    }
+	    e.printStackTrace();
+	    IR.escribetextPane(e.getMessage(), IR.normal, true);
+
+	}
+	return nuevospulsos;
+    }
+
+    /**
+     * Calcula si se esta consumiendo mas o menos caudal que los testeado.
+     */
+    public void calculacaudalauto() {
+
+	try {
+	    calculacaudal();
+
+	    float sumatoriocaudal = 0;
+	    String abiertas = "";
+	    int i = 0;
+
+	    // lo meto en un bloque sincronizado para que no puedan entrar más
+	    // de un hilo a la vez
+	    synchronized (this) {
+
+		valvsabiertashidro.clear();
+
+		for (Valvula v : IR.valvsabiertastot) {
+		    i++;
+		    if (v.isMaestra() == 0) {
+			if (i == IR.valvsabiertastot.size())
+			    abiertas = abiertas + v.getCodelecvalv();
+			else
+			    abiertas = abiertas + v.getCodelecvalv() + ", ";
+
+			sumatoriocaudal = sumatoriocaudal + v.getCaudalmod();
+
+			// Meto la valv en el array de las valvs con exceso o
+			// defecto de hidro
+			valvsabiertashidro.add(v);
+		    }
+
+		}
+
+		// AKI comparo las medidas obtenidas comparandolas con las
+		// modelos
+		if (logger.isInfoEnabled()) {
+		    logger.info("SUMATORIO CAUDAL: " + sumatoriocaudal);
+		}
+
+		float diferenciacau = sumatoriocaudal - caudal;
+
+		if (logger.isInfoEnabled()) {
+		    logger.info("diferenciacau = " + diferenciacau);
+		}
+		// Se calcula con un margen de error definido en
+		// IrrisoftConstantes
+		//
+
+		// <<<<<<< HEAD
+		// if (logger.isInfoEnabled()) {
+		//
+		// logger.info("Diferencia Caudal = " + diferenciacau);
+		//
+		// }
+		// // Se calcula un margen de diferencia para las alarmas del
+		// 20%
+		//
+		// if (IR.valvsabiertastot.size() > 0) {
+		// if (Math.abs(diferenciacau) >= (sumatoriocaudal *
+		// IrrisoftConstantes.MARGEN_ERROR_CAU) / 100) {
+		// if (diferenciacau < 0) {
+		// contadorExceso++;
+		// contadorDefecto = 0;
+		// if (contadorExceso == 2) {
+		// if (logger.isWarnEnabled()) {
+		// logger.warn("Hay un problema en el consumo de agua. Estás consumiendo "
+		// + Math.abs(diferenciacau)
+		// + " l/s de más\nVálvula(s) " + abiertas);
+		// }
+		//
+		// IR.escribetextPane("\nHay un problema en el consumo de agua !",IR.negrita,
+		// false);
+		// IR.escribetextPane("\n Consumo " + Math.abs(diferenciacau)+
+		// " l/s +\t\t\t", IR.normal, true);
+		// IR.escribetextPane("\n Se cerrarán la(s) válvula(s) "+
+		// abiertas + " ", IR.normal, false);
+		//
+		// // Genero alarma: Fuga de agua en estaciones.
+		// gestorAlertas.insertarAlarma(2001, abiertas);
+		// // Aquí cierro las valvulas afectadas
+		// IR.getConn().cierratodasvalvs(false);
+		//
+		// contadorExceso = 0;
+		// }
+		// } else if (diferenciacau > 0) {
+		// contadorDefecto++;
+		// contadorExceso = 0;
+		// if (contadorDefecto == 2) {
+		// if (logger.isWarnEnabled()) {
+		// logger.warn("Hay un problema en el consumo de agua. Estás consumiendo "
+		// + Math.abs(diferenciacau)
+		// + " l/s de menos\nVálvula(s) "
+		// + abiertas);
+		// }
+		//
+		// IR.escribetextPane("\nHay un problema en el consumo de agua !",IR.negrita,
+		// false);
+		// IR.escribetextPane("\n Consumo " + Math.abs(diferenciacau)+
+		// " l/s -\t\t\t", IR.normal, true);
+		// IR.escribetextPane("\n Válvula(s) " + abiertas+ " ",
+		// IR.normal, false);
+		//
+		// // Genero alarma: Obstrucción mecánica en
+		// // estaciones.
+		// gestorAlertas.insertarAlarma(2004, abiertas);
+		//
+		// =======
+		if (IR.valvsabiertastot.size() > 0) {
+		    if (Math.abs(diferenciacau) >= (sumatoriocaudal * IrrisoftConstantes.MARGEN_ERROR_CAU) / 100) {
+			if (diferenciacau < 0) {
+			    contadorExceso++;
+			    // >>>>>>> branch 'testing' of
+			    // ssh://alberto@diego.pericaingenieria.net/opt/git/irrisoft
+			    contadorDefecto = 0;
+			    // TODO DECOMENTAR
+			    if (contadorExceso == 2) {
+				if (logger.isWarnEnabled()) {
+				    logger.warn("Hay un problema en el consumo de agua. Estás consumiendo "
+					    + Math.abs(diferenciacau)
+					    + " l/s de más\nVálvula(s) "
+					    + abiertas);
+				}
+
+				IR.escribetextPane(
+					"\nHay un problema en el consumo de agua !",
+					IR.negrita, false);
+				IR.escribetextPane(
+					"\n Consumo " + Math.abs(diferenciacau)
+						+ " l/s +\t\t\t", IR.normal,
+					true);
+				IR.escribetextPane(
+					"\n Se cerrarán la(s) válvula(s) "
+						+ abiertas + " ", IR.normal,
+					false);
+
+				// Genero alarma: Fuga de agua en estaciones.
+				gestorAlertas.insertarAlarma(2001,
+					Math.abs(diferenciacau) + " l/s + : "
+						+ abiertas);
+
+				// TODO Aquí cierro las valvulas afectadas
+				// (cierravalvsprog)
+				IR.getConn().cierratodasvalvs(false);
+
+				// Cierro las maestras??
+				// IR.panelbt2.cierramaestra();
+
+				contadorExceso = 0;
+
+				// Marco el hidroexceso de las valvulas
+				// afectadas a true sólo en las programaciones
+				// activas
+				for (Valvula v : valvsabiertashidro) {
+				    for (Programacion p : ListaProgsaexec
+					    .getInstance().getprogramas()) {
+					if (p.getEnmarcha().contains("S")) {
+					    if (!p.valvsexcesohidro.contains(v)) {
+						p.valvsexcesohidro.add(v);
+						v.setHidroexceso(true);
+					    }
+					}
+				    }
+				}
+			    }
+			} else if (diferenciacau > 0) {
+			    contadorDefecto++;
+			    contadorExceso = 0;
+			    if (contadorDefecto == 2) {
+				if (logger.isWarnEnabled()) {
+				    logger.warn("Hay un problema en el consumo de agua. Estás consumiendo "
+					    + Math.abs(diferenciacau)
+					    + " l/s de menos\nVálvula(s) "
+					    + abiertas);
+				}
+				// Genero alarma: Obstrucción mecánica en
+				// estaciones.
+				gestorAlertas.insertarAlarma(2004,
+					Math.abs(diferenciacau) + " l/s - : "
+						+ abiertas);
+
+				IR.escribetextPane(
+					"\nHay un problema en el consumo de agua !",
+					IR.negrita, false);
+				IR.escribetextPane(
+					"\n Consumo " + Math.abs(diferenciacau)
+						+ " l/s -\t\t\t", IR.normal,
+					true);
+				IR.escribetextPane("\n Válvula(s) " + abiertas
+					+ " ", IR.normal, false);
+
+				contadorDefecto = 0;
+
+				// Marco el hidrodefecto de las valvulas
+				// afectadas a true
+				for (Valvula v : valvsabiertashidro) {
+				    for (Programacion p : ListaProgsaexec
+					    .getInstance().getprogramas()) {
+					if (p.getEnmarcha().contains("S")) {
+					    if (!p.valvsdefectohidro
+						    .contains(v)) {
+						p.valvsdefectohidro.add(v);
+						v.setHidroexceso(true);
+					    }
+					}
+				    }
+				}
+			    }
+
+			}
+		    }
+		}
+
+	    }
+
+	} catch (Exception e) {
+	    if (logger.isErrorEnabled()) {
+		logger.error("Error en calculaCaudalAuto: " + e.getMessage());
+	    }
+	    e.printStackTrace();
+	    IR.escribetextPane(e.getMessage(), IR.normal, true);
+	}
+
+    }
+
+    /**
+     * Calculo el caudal en automatico.
+     */
+    private double calculacaudal() {
+
+	try {
+	    if (logger.isInfoEnabled()) {
+		logger.info("Tiempo calculo consumo: "
+			+ ((System.nanoTime() - tiempoini) / Math.pow(10, 9)));
+	    }
+
+	    caudal = (float) (Math
+		    .rint(((((pulsosparciales) * (sens.getK())) / ((System
+			    .nanoTime() - tiempoini) / Math.pow(10, 9))) * 1000)) / 1000);
+
+	    if (logger.isInfoEnabled()) {
+		logger.info("El caudal es de : " + caudal + " l/s");
+	    }
+
+	    if (!first) {
+
+		// Meto las lecturas al sensor
+		sens.setLectura(df.format(caudal));
+		logger.warn("Lectura: " + sens.getLectura() + " , pulsos: "
+			+ sens.getPulsos());
+	    }
+
+	} catch (Exception e) {
+	    // TODO Auto-generated catch block
+	    e.printStackTrace();
+	    IR.escribetextPane(e.getMessage(), IR.normal, true);
+	}
+	return caudal;
+    }
+
+    /**
+     * 
+     */
+    public void test() {
+
+	// Me salgo si no hay que seguir haciendo el test
+	if (IR.test == false)
+	    return;
+
+	logger.error("Vuelta de test :" + vuelta);
+
+	if (primera) {
+	    // Para que haga un retardo para estabilizar el caudal
+	    // en la
+	    // línea hidraúlica
+	    int i = 0;
+	    IR.paneltest.lbltesteando.setText("Estabilizando, espere ...");
+	    IR.paneltest.progressBar.setValue(0);
+	    IR.paneltest.progressBar
+		    .setMaximum((int) IrrisoftConstantes.DELAY_EST_VALV / 1000);
+	    while (i < (int) IrrisoftConstantes.DELAY_EST_VALV / 1000) {
+
+		cuentapulsoslapso();
+		IR.esperarTiempo(10000, " Caudalimetro, test");
+		if (!IR.test) {
+		    IR.paneltest.progressBar.setValue(0);
+		    return;
+		}
+		i = i + 10;
+		IR.paneltest.progressBar.setValue(i);
+	    }
+
+	    IR.paneltest.progressBar.setMaximum(25);
+	    IR.paneltest.progressBar.setValue(0);
+
+	    IR.paneltest.lbltesteando.setText("TESTEANDO, espere ...");
+	    primera = false;
+
+	}
+
+	// Me salgo si no hay que seguir haciendo el test
+	if (IR.test == false)
+	    return;
+
+	if (logger.isInfoEnabled()) {
+	    logger.info(("Estoy en hilocaudalimetro: TEST"));
+	    logger.info("Pulsos parciales: " + pulsosparciales);
+	}
+
+	vuelta++;
+
+	IR.paneltest.progressBar.setValue(pulsosparciales);
+
+	try {
+
+	    // Duermo para dar tiempo a la bt a recibir otra orden
+	    IR.esperarTiempo(IrrisoftConstantes.DELAY_200MSEG,
+		    "cuentaPulsosBT2");
+
+	    cuentapulsoslapso();
+
+	    if (logger.isInfoEnabled())
+		logger.info("Lapsotiempo: " + lapsotiempo);
+
+	} catch (Exception e) {
+	    if (logger.isErrorEnabled()) {
+		logger.error(e.getMessage());
+	    }
+	    IR.escribetextPane("\nCancelada lectura de pulsos caudalimetro",
+		    IR.normal, false);
+	    return;
+	}
+
+	if (logger.isInfoEnabled()) {
+	    logger.info("Tiempo transcurrido: " + lapsotiempo * vuelta);
+	}
+
+	if ((lapsotiempo * vuelta) <= 60) {
+
+	    if (pulsosparciales >= 25) {
+		if (logger.isInfoEnabled()) {
+		    logger.info("< 60");
+		}
+		calculacaudaltest(tipovalv);
+	    }
+	} else if ((lapsotiempo * vuelta) > 60 && (lapsotiempo * vuelta) <= 120) {
+
+	    if (pulsosparciales >= 25) {
+		if (logger.isInfoEnabled()) {
+		    logger.info("< 120");
+		}
+		calculacaudaltest(tipovalv);
+
+	    }
+	} else if ((lapsotiempo * vuelta) > 120
+		&& (lapsotiempo * vuelta) <= 240) {
+
+	    if (pulsosparciales > 3) {
+		if (logger.isInfoEnabled()) {
+		    logger.info(">120");
+		}
+		calculacaudaltest(tipovalv);
+	    }
+	} else if ((lapsotiempo * vuelta) > 240) {
+
+	    if (pulsosparciales > 3) {
+		if (logger.isInfoEnabled()) {
+		    logger.info(">240");
+		}
+		calculacaudaltest(tipovalv);
+	    } else {
+		//TODO 6Aquí habría que meter el while para que esperara al tercer pulso
+		logger.error("No hay lecturas de agua. Se pasa a la siguiente valvula. ");
+		calculacaudaltest(tipovalv);
+	    }
+
+	}
+
+    }
+
+    /**
+     * Cojo los pulsosdiarios por si se ha reiniciado el programa. Cojo los
+     * pulsosdiarios si estamos en el mismo dia, sino inserto una fila.
+     */
+    private void calculapulsosdiarios() {
+
+	if (pulsosdiarios == 0 && resetConsumoDiarioAgua == false) {
+
+	    fechaConsumoAgua = IR.hiloescucha.connDB.devolverFecha(sens
+		    .getNum_sensor());
+
+	    if (fechaConsumoAgua == null) {
+		cal = Calendar.getInstance();
+		java.sql.Timestamp dateRiego = new java.sql.Timestamp(
+			cal.getTimeInMillis());
+		fechaConsumoAgua = dateRiego;
+	    }
+
+	    // Saco los pulsosdiarios de la ultima fecha.
+	    pulsosdiarios = IR.hiloescucha.connDB.devolverRiego(
+		    sens.getNum_sensor(), fechaConsumoAgua);
+	    pulsosdiarios = (pulsosdiarios / sens.getK());
+
+	    logger.warn("Pulsos diarios:" + pulsosdiarios);
+
+	}
+    }
+
+    /**
+     * Cuento los pulsos de la placa MCI.
+     */
+    private void cuentapulsosmci() {
+
+	boolean consultaEnvio = false;
+
+	// Duermo 3 seg.
+	IR.esperarTiempo(IrrisoftConstantes.DELAY_SENSOR_3SEG,
+		"cuentaPulsosMCI");
+
+	// Cojo el semaforo.
+	serialcon.cogesemaforo(tipoplaca);
+	serialcon.purga_puerto(serialcon.serialPort);
+	// Envio datos al Puerto Serie.
+	consultaEnvio = serialcon.enviarDatosPuertoMCI(serialcon, sens);
+
+	byte[] bufferResp = null;
+
+	if (consultaEnvio) {
+	    // Duermo 100Mseg
+	    IR.esperarTiempo(100, "cuentaPulsosMCI");
+	    bufferResp = serialcon.leerRespuestaMCI(serialcon, sens);
+
+	}
+	serialcon.purga_puerto(serialcon.serialPort);
+	// Suelto el semaforo
+	serialcon.sueltasemaforo(tipoplaca);
+
+	// Saco las lecturas
+	if (bufferResp != null) {
+	    sacarLecturasMCI(bufferResp);
+	}
+
+    }
+
+    /**
+     * Trato la lectura que me da la Placa MCI.
+     * 
+     * @param bufferResp2
+     */
+    private void sacarLecturasMCI(byte[] bufferResp2) {
+
+	logger.warn(Arrays.toString(bufferResp2));
+
+	// Le quito el signo alos bytes
+	for (int j = 0; j < bufferResp2.length; j++) {
+	    bufferResp2[j] = (byte) (bufferResp2[j] & 0xFF);
+	}
+
+	// Saco la medicion
+	int medicion = ((bufferResp2[4] * 65536) + (bufferResp2[3] * 256))
+		+ bufferResp2[2];
+
+	if (logger.isInfoEnabled()) {
+	    logger.info("Comando: " + bufferResp2[0]);
+	    logger.info("Borna: " + bufferResp2[1]);
+	    logger.info("Lectura1: " + bufferResp2[2]);
+	    logger.info("Lectura2: " + bufferResp2[3]);
+	    logger.info("Lectura3: " + bufferResp2[4]);
+	    logger.info("Checksum: " + bufferResp2[5]);
+	}
+
+	pulsos[0] = pulsos[1];
+	pulsos[1] = medicion;
+
+	nuevospulsos = pulsos[1];
+	logger.warn("Nuevos Pulsos: " + nuevospulsos);
+	// result = (pulsos[1] - pulsos[0]);
+
+	// Pulsos totales
+	if (vuelta == 0) {
+	    tiempoini = System.nanoTime();
+	    // pulsosparciales = pulsos[1];
+	    // nuevospulsos = pulsos[1];
+
+	}
+    }
+
+    /**
+     * Cuento los pulsos de la BT2
+     */
+    private void cuentapulsosbt2() {
+
+	try {
+
+	    logger.info("Comando leer pulsos caudalimetro bt: ["
+		    + IrrisoftConstantes.CaudalBT[0] + ","
+		    + IrrisoftConstantes.CaudalBT[1] + ","
+		    + IrrisoftConstantes.CaudalBT[2] + ","
+		    + IrrisoftConstantes.CaudalBT[3] + ","
+		    + IrrisoftConstantes.CaudalBT[4] + ","
+		    + IrrisoftConstantes.CaudalBT[5] + "]");
+
+	    serialcon.cogesemaforo(tipoplaca);
+
+	    // Duermo para dar tiempo a la bt a recibir otra orden
+	    IR.esperarTiempo(IrrisoftConstantes.DELAY_200MSEG,
+		    "cuentaPulsosBT2");
+
+	    serialcon.purga_puerto(serialcon.serialPort);
+
+	    // Mando comando al caudalimetro BT2
+	    serialcon.serialPort.writeBytes(IrrisoftConstantes.CaudalBT);
+	    // Leo la respuesta del caudalimetro T2
+	    bufferresp = serialcon.serialPort.readBytes(6, 6000);
+
+	    logger.info("Buffer respuesta caudalimetro bt: [" + bufferresp[0]
+		    + " , " + bufferresp[1] + " , " + bufferresp[2] + " , "
+		    + bufferresp[3] + " , " + bufferresp[4] + " , "
+		    + bufferresp[5] + "]");
+	    
+	    //Si el byte 3 es igual a 1, la lectura es valida.
+	    if (bufferresp[3] == 1) {
+		pulsos[0] = pulsos[1];
+		pulsos[1] = bufferresp[4] & IrrisoftConstantes.mascara;
+
+		nuevospulsos = (pulsos[1] - pulsos[0]);
+		logger.warn("Pulsos Nuevos: " + nuevospulsos);
+
+		if (logger.isInfoEnabled()) {
+		    logger.info("Respuesta de pulsos acomulados:" + pulsos[1]
+			    + " tipoplaca " + tipoplaca);
+		}
+	    }
+	    // Segunda lectura porque la primera se desestima (da 0
+	    // pulsos??? a arreglar por tonyck???)
+	    if (pulsos[1] == 0) {
+
+		// Espero 3 segundos como poco.
+		IR.esperarTiempo(3000, "cuentaPulsoBT2");
+		serialcon.purga_puerto(serialcon.serialPort);
+		serialcon.serialPort.writeBytes(IrrisoftConstantes.CaudalBT);
+		bufferresp = serialcon.serialPort.readBytes(6, 6000);
+		logger.info("Buffer respuesta caudalimetro bt2 segunda vez: ["
+			+ bufferresp[0] + " , " + bufferresp[1] + " , "
+			+ bufferresp[2] + " , " + bufferresp[3] + " , "
+			+ bufferresp[4] + " , " + bufferresp[5] + "]");
+		serialcon.purga_puerto(serialcon.serialPort);
+		
+		 //Si el byte 3 es igual a 1, la lectura es valida.
+		if (bufferresp[3] == 1) {
+		    pulsos[0] = pulsos[1];
+		    pulsos[1] = bufferresp[4] & IrrisoftConstantes.mascara;
+
+		    nuevospulsos = (pulsos[1] - pulsos[0]);
+		    logger.warn("Pulsos Nuevos (intentona 2): " + nuevospulsos);
+
+		    if (logger.isInfoEnabled()) {
+			logger.info("Respuesta de pulsos acomulados (intentona 2):"
+				+ pulsos[1] + " tipoplaca " + tipoplaca);
+		    }
+		}
+	    }
+
+	    String s = ("0000000" + Integer.toBinaryString(0xFF & pulsos[1]))
+		    .replaceAll(".*(.{8})$", "$1");
+	    if (logger.isInfoEnabled()) {
+		logger.info("Respuesta de pulsos acomulados (bits):" + s);
+	    }
+
+	    if (vuelta == 0) {
+
+		tiempoini = System.nanoTime();
+		// pulsosparciales = pulsos[1];
+		// nuevospulsos = pulsos[1];
+	    }
+
+	} catch (SerialPortException | SerialPortTimeoutException
+		| NullPointerException e) {
+	    if (e instanceof SerialPortException && logger.isErrorEnabled()) {
+		logger.error("Error de puerto serie:" + e.getMessage());
+	    } else if (e instanceof SerialPortTimeoutException
+		    && logger.isErrorEnabled()) {
+		logger.error("Fallo en leer respuesta del puerto serie! "
+			+ IrrisoftConstantes.CaudalBT.toString());
+
+		logger.error(e.getMessage());
+
+		IR.escribetextPane(
+			"\nTIMEOUUUUUT en la lectura del buffer serie caudal BT2",
+			IR.normal, false);
+
+		// serialcon.resetsinsemaforo();
+		serialcon.reset(tipoplaca);
+
+	    } else if (e instanceof NullPointerException
+		    && logger.isErrorEnabled()) {
+		logger.error("Error de NullPointerException en cuentaPulsosBt2: "
+			+ e.getMessage());
+	    }
+
+	} finally {
+
+	    serialcon.purga_puerto(serialcon.serialPort);
+
+	    serialcon.sueltasemaforo(tipoplaca);
+	}
+
+    }
+
+    /**
+     * @param tipovalv
+     */
+    public void calculacaudaltest(int tipovalv) {
+
+	int numplaca = IR.paneltest.HiloTest.numplaca;
+	numvalv = IR.paneltest.HiloTest.numvalv;
+
+	if (logger.isInfoEnabled()) {
+	    logger.info("NUMVALV en calculacaudaltest: " + numvalv);
+	    logger.info("numplaca en calculacaudaltest: " + numplaca);
+	    logger.info("Caudal con tiempotestvalv: "
+		    + ((System.nanoTime() - tiempoini) / Math.pow(10, 9)));
+	}
+
+	calculacaudal();
+
+	if (!IR.inicial) {
+	    IR.paneltest.lblPulsosDat
+		    .setText(Integer.toString(pulsosparciales));
+	    IR.paneltest.lblCauDat.setText(caudal + " l/seg");
+	} else {
+	    IR.paneltest.lblpul.setText(Integer.toString(pulsosparciales));
+	    IR.paneltest.lblls.setText(caudal + " l/seg");
+
+	}
+
+	valv = new Valvula();
+
+	for (Iterator<Valvula> iter = IR.valvsabiertastot.iterator(); iter
+		.hasNext();) {
+
+	    valv = iter.next();
+
+	    System.out.println("VALV: " + valv.getCodelecvalv()
+		    + " , numplaca " + valv.getNum_placa());
+	    if (valv.getCodelecvalv().contentEquals(numvalv)
+		    && valv.isMaestra() == 0)
+		break;
+	    else
+		valv = null;
+	}
+
+	if (valv != null) {
+	    System.out.println("Valvula: " + valv.getCodelecvalv()
+		    + " , numplaca " + valv.getNum_placa());
+
+	    // AVISO al amperimetro correspondiente
+	    Sensor sensor = ListaSensores.getInstance().getsens(
+		    valv.getNum_placa(), 3,
+		    Integer.parseInt(valv.getCodelecvalv()));
+
+	    System.out.println("Sensor al que avisa el caudalimetro: "
+		    + sensor.getNum_sensor() + " , "
+		    + sensor.getHilosens().getName());
+
+	    synchronized (sensor.getHilosens()) {
+		sensor.setLecturacau(caudal);
+		sensor.setValvula(Integer.parseInt(numvalv));
+		sensor.getHilosens().notify();
+	    }
+
+	} else {
+	    logger.info("La valvula no existe !");
+	}
+	// Duermo para que le de tiempo al amperimetro a actuar
+	IR.esperarTiempo(IrrisoftConstantes.DELAY_SENSOR_1SEG,
+		"calculacaudalTest");
+
+	// Si es una valvulamci
+	if (tipovalv == 1) {
+
+	    // cierro la valvula requerida
+	    if (IrrisoftConstantes.PLACA_MCI_1 == numplaca) {
+		IR.panelmci.interruptor(IR.valvsmci.getvalvmci(numvalv),
+			IR.valvsmci.getvalvmci(numvalv).getImgasoc(),
+			IR.panelmci.panel1);
+		IR.valvsmci.getvalvmci(numvalv).setCaudalmod(caudal);
+
+	    }
+	    if (IrrisoftConstantes.PLACA_MCI_2 == numplaca) {
+		IR.panelmci.interruptor(IR.valvsmci2.getvalvmci(numvalv),
+			IR.valvsmci2.getvalvmci(numvalv).getImgasoc(),
+			IR.panelmci.panel2);
+		IR.valvsmci2.getvalvmci(numvalv).setCaudalmod(caudal);
+	    }
+	    if (IrrisoftConstantes.PLACA_MCI_3 == numplaca) {
+		IR.panelmci.interruptor(IR.valvsmci3.getvalvmci(numvalv),
+			IR.valvsmci3.getvalvmci(numvalv).getImgasoc(),
+			IR.panelmci.panel3);
+		IR.valvsmci3.getvalvmci(numvalv).setCaudalmod(caudal);
+	    }
+	    if (IrrisoftConstantes.PLACA_MCI_4 == numplaca) {
+		IR.panelmci.interruptor(IR.valvsmci4.getvalvmci(numvalv),
+			IR.valvsmci4.getvalvmci(numvalv).getImgasoc(),
+			IR.panelmci.panel4);
+		IR.valvsmci4.getvalvmci(numvalv).setCaudalmod(caudal);
+	    }
+
+	}
+	// Si es una valvulabt2
+	else if (tipovalv == 2) {
+	    // cierro la valvula requerida
+	    if (IrrisoftConstantes.BT2_2000 > Integer.parseInt(numvalv)) {
+		IR.panelbt2.interruptor(IR.valvsbt2.getvalvbt2(numvalv), 2, 3);
+		IR.valvsbt2.getvalvbt2(numvalv).setCaudalmod(caudal);
+	    }
+	    if (IrrisoftConstantes.BT2_3000 > Integer.parseInt(numvalv)
+		    && IrrisoftConstantes.BT2_2000 < Integer.parseInt(numvalv)) {
+		IR.panelbt2.interruptor(IR.valvsbt22.getvalvbt2(numvalv), 2, 4);
+		IR.valvsbt22.getvalvbt2(numvalv).setCaudalmod(caudal);
+	    }
+	    if (IrrisoftConstantes.BT2_4000 > Integer.parseInt(numvalv)
+		    && IrrisoftConstantes.BT2_3000 < Integer.parseInt(numvalv)) {
+		IR.panelbt2.interruptor(IR.valvsbt23.getvalvbt2(numvalv), 2, 5);
+		IR.valvsbt23.getvalvbt2(numvalv).setCaudalmod(caudal);
+	    }
+	    if (IrrisoftConstantes.BT2_4000 < Integer.parseInt(numvalv)) {
+		IR.panelbt2.interruptor(IR.valvsbt24.getvalvbt2(numvalv), 2, 6);
+		IR.valvsbt24.getvalvbt2(numvalv).setCaudalmod(caudal);
+	    }
+	}
+
+	if (!IR.inicial) {
+
+	    // Activo los botones
+	    IR.paneltest.btnAtras.setEnabled(true);
+	    IR.paneltest.btnTestearMCI.setEnabled(true);
+	    IR.paneltest.btntesteoini.setEnabled(true);
+	    IR.paneltest.btnTestearBT2.setEnabled(true);
+	    IR.paneltest.comboBoxMCI.setEnabled(true);
+	    IR.paneltest.comboBoxBt2.setEnabled(true);
+	    IR.paneltest.btnAtras.setText("Atras");
+
+	}
+
+	// para que no tenga en cuenta los pulsos hasta que se vacíe la tubería
+	// !!
+
+	IR.paneltest.lbltesteando.setText("Testeo de valvula OK");
+
+	vuelta = -1;
+	// pulsosparciales = 0;
+
+	// Espero 20 seg, para que se pueda ver la info en el panel.
+	IR.esperarTiempo(IrrisoftConstantes.DELAY_SENSOR_20SEG,
+		"calculacaudalTest");
+
+	// Aviso al hilo del test para que continue con su ejecución
+	synchronized (IR.paneltest.hilotest) {
+	    IR.paneltest.hilotest.notify();
+	}
+
+	// Espero 7 seg, para que le de tiempo a ejecutar a hilotest.
+	IR.esperarTiempo(IrrisoftConstantes.DELAY_SENSOR_7SEG,
+		"calculacaudalTest");
+
+    }
+
+    // //////////////////
+    // GETTERS Y SETTERS
+    // //////////////////
+    // public void setTerminar(boolean terminar) {
+    // this.terminar = terminar;
+    // }
+
+    // public boolean getTerminar() {
+    // return terminar;
+    // }
+
+    // public boolean isTest() {
+    // return test;
+    // }
+    //
+    // public void setTest(boolean test) {
+    // this.test = test;
+    // }
+
+    public int getPulsostot() {
+	return pulsosparciales;
+    }
+
+    public void setPulsostot(int pulsostot) {
+	this.pulsosparciales = pulsostot;
+    }
+
+    public int getVuelta() {
+	return vuelta;
+    }
+
+    public void setVuelta(int vuelta) {
+	this.vuelta = vuelta;
+    }
+
+    public int getValvsabiertas() {
+	return valvsabiertas;
+    }
+
+    public void setValvsabiertas(int valvsabiertas) {
+	this.valvsabiertas = valvsabiertas;
+    }
+
+    public boolean isFlag() {
+
+	return resetConsumoDiarioAgua;
+
+    }
+
+    public void setFlag(boolean flag) {
+
+	this.resetConsumoDiarioAgua = flag;
+
+    }
+
+    public Sensor getSens() {
+	return sens;
+    }
+
+    public void setSens(Sensor sens) {
+	this.sens = sens;
+    }
+
+    @Override
+    public void propertyChange(PropertyChangeEvent evt) {
+
+	String nombreCampo = evt.getPropertyName();
+
+	// Evento para sincronizacion del programador
+	if ("sincronizar".contains(nombreCampo)) {
+	    this.rearmarCau = true;
+	}
+	// Listener para controlar la conexion Remota
+	// else if ("true".contains(nombreCampo)) {
+	// // synchronized (IR.hiloescucha.connDB){
+	// IR.hiloescucha.connDB.enviarRegSensoresBBDD();
+	// //}
+	// }
+    }
+
+}

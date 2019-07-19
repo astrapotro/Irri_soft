@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">
+<refactoring accessors="true" comment="Delete 6 elements from project &apos;Irrisoft&apos;&#x0A;- Original project: &apos;Irrisoft&apos;&#x0A;- Original elements:&#x0A;     IrrisoftPack.log&#x0A;     PanelesPack.log&#x0A;     ProgramaPack.log&#x0A;     SensoresPack.log&#x0A;     TareaPack.log&#x0A;     Volcado.log" description="Delete elements" element1="irrisoft/PanelesPack.log" element2="irrisoft/Volcado.log" element3="irrisoft/TareaPack.log" element4="irrisoft/IrrisoftPack.log" element5="irrisoft/ProgramaPack.log" element6="irrisoft/SensoresPack.log" elements="0" flags="589830" id="org.eclipse.jdt.ui.delete" resources="6" stamp="1450084060014" subPackages="false" version="1.0"/>
+</session>

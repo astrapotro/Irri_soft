@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">
+<refactoring comment="Rename method &apos;volcadopack.ConexionVolc.activar_desactivar_prog(...)&apos; to &apos;activar_desactivar_programa&apos;&#x0A;- Original project: &apos;Irrisoft&apos;&#x0A;- Original element: &apos;volcadopack.ConexionVolc.activar_desactivar_prog(...)&apos;&#x0A;- Renamed element: &apos;volcadopack.ConexionVolc.activar_desactivar_programa(...)&apos;&#x0A;- Update references to refactored element" delegate="false" deprecate="false" description="Rename method &apos;activar_desactivar_prog&apos;" flags="589826" id="org.eclipse.jdt.ui.rename.method" input="/src&lt;volcadopack{ConexionVolc.java[ConexionVolc~activar_desactivar_prog~I~Z" name="activar_desactivar_programa" references="true" stamp="1447408072880" version="1.0"/>
+</session>

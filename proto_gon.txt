@@ -1,0 +1,197 @@
+package pruebapack;
+
+import gnu.io.SerialPort;
+import gnu.io.CommPort;
+import gnu.io.CommPortIdentifier;
+import gnu.io.NoSuchPortException;
+import gnu.io.PortInUseException;
+
+import gnu.io.UnsupportedCommOperationException;
+
+
+
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+
+
+
+public class prueba {
+
+
+protected static SerialPort serialPort;
+public static OutputStream out;
+public static InputStream in;
+
+
+	/**
+	 * @param args
+	 */
+	public static void main(String[] args) {
+		// TODO Auto-generated method stub
+
+		
+
+			int [] buffer = new int [6];
+			byte [] churro = new byte [6];
+			int len = 0;
+			int  leo = 0;
+			byte comando = 1;
+			byte borna = 7;
+			byte parametro1 = 0;
+			byte parametro2 = 0;
+			byte parametro3 = 0;
+			byte checksum = (byte) (comando + borna + parametro1 +parametro2 +parametro3);
+    		
+			
+			
+			conecta();
+			
+			
+    		churro[0]=comando;
+    		churro[1]=borna;
+    		churro[2]=parametro1;
+    		churro[3]=parametro2;
+    		churro[4]=parametro3;
+    		churro[5]=checksum;
+    		
+	    	System.out.println("El comando es " +comando);
+	    	System.out.println(serialPort.getName());
+	    	
+	    	try {
+				out.write(churro);
+				
+			} catch (IOException e) {
+				// 
+				e.printStackTrace();
+			}
+		
+	    	System.out.println("Comando mandado");
+	    	
+	    	while(len<6)
+    		{
+    				try {
+						leo=in.read();
+					} catch (IOException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+    				
+    				//Le quito el signo al byte
+    				int num = leo  & 0xFF;
+    		
+    				buffer[len]=num;
+    				
+    				if (leo==3)
+    					System.out.println("Gontzi responde");
+    				if (leo==7)
+    					System.out.println("Gontzi manda borna 7");
+    				
+    				len ++;
+    		}
+	    	int medicion = (buffer[3]*256)+buffer[2];
+	    	//System.out.println("BUFFER: "+buffer.toString());
+	    	System.out.println("Comando: "+buffer[0]);
+	    	System.out.println("Borna: "+buffer[1]);
+	    	System.out.println("Parametro1: "+buffer[2]);
+	    	System.out.println("PArametro2: "+buffer[3]);
+	    	System.out.println("Parametro3: "+buffer[4]);
+	    	System.out.println("Checksum: "+buffer[5]);
+	    	
+	    	double voltaje  = ((double)medicion/1023)*4.972;
+	    	
+	    	System.out.println("Total que la medicion es: "+medicion);
+	    	System.out.println("Voltaje recibido: "+ voltaje );
+	    	
+		
+	}
+
+
+	private static void conecta() {
+		// TODO Auto-generated method stub
+		
+		String puerto="/dev/ttyACM0";
+		
+		 System.setProperty("gnu.io.rxtx.SerialPorts", puerto);
+	        CommPortIdentifier portIdentifier = null;
+	        
+	        //Por si la placa no tiene conexión propago el error y no ejecuto nada.
+	        while (portIdentifier == null){
+				try {
+					portIdentifier = CommPortIdentifier.getPortIdentifier(puerto);
+				} catch (NoSuchPortException e1) {
+					//TODO Controlar en el panelpral que hay conexión con las placas antes de que el error se propague!!!
+					
+					System.out.println("\nNo hay conexion con el puerto "+puerto+"\nEl usb de la placa está conectado?");
+					
+				}
+			
+	        }
+			
+			if ( portIdentifier.isCurrentlyOwned() ){
+	            System.out.println("Error: El puerto "+puerto+ " está siendo utilizado por otro proceso");
+			}
+	        else
+	        {
+	            CommPort commPort = null;
+				try {
+					commPort = portIdentifier.open(puerto,5000);
+				} catch (PortInUseException e) {
+					// 
+					e.printStackTrace();
+				}
+	            
+	            if ( commPort instanceof SerialPort )
+	            {
+	                
+	                serialPort = (SerialPort) commPort;
+	                
+	                
+	                //TODO Si algo falla con los serie QUITAR
+	                serialPort.disableReceiveTimeout();
+	                try {
+	        			serialPort.enableReceiveThreshold(1);
+	        		} catch (UnsupportedCommOperationException e) {
+	        			// 
+	        			e.printStackTrace();
+	        		}
+	                
+	                
+	                
+	                //
+	                //CONFIGURACION de LA CONEXION SERIE con varios ifs para cada placa !!
+	               
+	    					try {
+								serialPort.setSerialPortParams(9600,SerialPort.DATABITS_8,SerialPort.STOPBITS_1,SerialPort.PARITY_NONE);
+							} catch (UnsupportedCommOperationException e1) {
+								// TODO Auto-generated catch block
+								e1.printStackTrace();
+							}
+	             
+	                
+	                try {
+						out = serialPort.getOutputStream();
+						in = serialPort.getInputStream();
+						
+						
+					} catch (IOException e) {
+						// 
+						e.printStackTrace();
+					}
+
+	            }
+	            else
+	            {
+	                System.out.println("Error: Only serial ports are handled by this example.");
+	            }
+	        }     
+		
+	}
+
+	
+	
+	
+	
+	
+}

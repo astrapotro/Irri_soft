@@ -1,0 +1,7 @@
+1449051041025	Rename method 'insertarAlarmasExteriores'
+1449051131831	Rename method 'insertarAlerta'
+1449051288140	Rename method 'cargarBBDDalertas'
+1449051308246	Rename method 'cargarymandarBBDDalertas'
+1449051330488	Rename method 'enviarRegSensoresBBDD'
+1449051400169	Rename type 'cargarAlertas'
+1449051465935	Rename method 'insertaAlarmaNoEnviadas'

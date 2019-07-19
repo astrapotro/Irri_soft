@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<classpath>
+	<classpathentry kind="src" path="src"/>
+	<classpathentry kind="src" path="test"/>
+	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
+	<classpathentry kind="con" path="org.eclipse.pde.core.requiredPlugins"/>
+	<classpathentry kind="lib" path="RXTXcomm.jar">
+		<attributes>
+			<attribute name="org.eclipse.jdt.launching.CLASSPATH_ATTR_LIBRARY_PATH_ENTRY" value="/usr/lib/jni"/>
+		</attributes>
+	</classpathentry>
+	<classpathentry kind="lib" path="log4j-api-2.0-rc2.jar">
+		<attributes>
+			<attribute name="javadoc_location" value="http://logging.apache.org/log4j/2.x/log4j-api/apidocs/"/>
+		</attributes>
+	</classpathentry>
+	<classpathentry kind="lib" path="log4j-core-2.0-rc2.jar">
+		<attributes>
+			<attribute name="javadoc_location" value="http://logging.apache.org/log4j/2.x/log4j-core/apidocs/"/>
+		</attributes>
+	</classpathentry>
+	<classpathentry kind="lib" path="mysql-connector-java-5.1.30-bin.jar"/>
+	<classpathentry kind="lib" path="jssc-2.8.0.jar">
+		<attributes>
+			<attribute name="org.eclipse.jdt.launching.CLASSPATH_ATTR_LIBRARY_PATH_ENTRY" value="Irrisoft0.3.36/.settings"/>
+		</attributes>
+	</classpathentry>
+	<classpathentry kind="lib" path="joda-time-2.3.jar">
+		<attributes>
+			<attribute name="javadoc_location" value="jar:platform:/resource/Irrisoft0.3.40/joda-time-2.3-javadoc.jar!/"/>
+		</attributes>
+	</classpathentry>
+	<classpathentry kind="con" path="org.eclipse.jdt.junit.JUNIT_CONTAINER/4"/>
+	<classpathentry kind="lib" path="jfreechart-1.0.19.jar">
+		<attributes>
+			<attribute name="javadoc_location" value="http://www.jfree.org/jfreechart/api/javadoc/"/>
+		</attributes>
+	</classpathentry>
+	<classpathentry kind="lib" path="jcommon-1.0.23.jar">
+		<attributes>
+			<attribute name="javadoc_location" value="http://www.jfree.org/jcommon/api/"/>
+		</attributes>
+	</classpathentry>
+	<classpathentry kind="lib" path="jasypt-1.9.1.jar">
+		<attributes>
+			<attribute name="javadoc_location" value="http://www.jasypt.org/api/jasypt/1.9.1/"/>
+		</attributes>
+	</classpathentry>
+	<classpathentry kind="output" path="bin"/>
+</classpath>

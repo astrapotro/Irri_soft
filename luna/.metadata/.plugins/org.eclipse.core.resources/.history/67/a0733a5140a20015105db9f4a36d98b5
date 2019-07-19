@@ -1,0 +1,549 @@
+package sensorespack;
+
+import java.beans.PropertyChangeEvent;
+import java.beans.PropertyChangeListener;
+
+import irrisoftpack.Irrisoft;
+import irrisoftpack.IrrisoftConstantes;
+import irrisoftpack.SerialDriver;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import alertaspack.GestorAlertas;
+import valvulaspack.Valvula;
+
+public class HiloAmperimetro extends Sensor implements Runnable,
+	PropertyChangeListener {
+
+    private static Logger logger = LogManager.getLogger(HiloAmperimetro.class
+	    .getName());
+    // Habría que cambiarlo para que fuera dinamico, ahora esta puesto para la
+    // bt2
+    protected SerialDriver serialcon;
+
+    // protected String puerto;
+    protected int tipoplaca, len, leo, i, repeticion = 0;
+
+    // Mascara para desechar el bit 7 de la respuesta de la bt2
+    // protected static byte mascara = (byte) 0b01111111;
+
+    // public boolean test;
+    // test = IR.test;
+    // public boolean inicial=false;
+    private boolean mci = true;
+
+    // public int tipovalv;
+    // public int numvalv;
+
+    public Valvula valv;
+    private Sensor sens;
+
+    // Variables para las lecturas del amperimetro.
+    private int lectura = 0;
+    private int lecturant = 0;
+    private Double consumobase = 0.0d;
+
+    private int valvsabiertas;
+
+    // Variable Gestor Alertas
+    private GestorAlertas gestorAlertas;
+    // Variable Irrisoft
+    private Irrisoft IR;
+
+    public HiloAmperimetro(SerialDriver serial, Sensor sens, int tipo) {
+	super();
+	this.serialcon = serial;
+	this.tipoplaca = tipo;
+	this.sens = sens;
+	gestorAlertas = GestorAlertas.getInstance();
+	this.IR = Irrisoft.window;
+	// this.test = IR.test;
+
+    }
+
+    /**
+     * Este es el Hilo Prinicipal del Ampèrimetro
+     * 
+     * @see java.lang.Runnable#run()
+     */
+    public void run() {
+
+	// Me quedo esperando a que leerconfini me avise !
+	synchronized (sens.getHilosens()) {
+	    try {
+		sens.getHilosens().wait();
+	    } catch (InterruptedException e) {
+		if (logger.isErrorEnabled()) {
+		    logger.error("Hilo interrumpido: " + e.getMessage());
+		}
+	    }
+	}
+
+	// Duermo para dar tiempo a que levante la línea
+	IR.esperarTiempo(10000 + (sens.getNum_placa() * 5000),
+		"hiloamp inicial");
+
+	if (sens.getTipo_placa().contains("BT")) {
+	    // compruebo si la línea está caida y si lo está espero
+	    sens.lineacaida();
+	    // Activo la placa preguntando el consumo
+	    if (!serialcon.consultconsum(serialcon, sens))
+		// Leo la respuesta del consumo.
+		serialcon.leeresp(true, tipoplaca, true, sens);
+	}
+	// Si la placa del amperimetro es MCI, miro cualesabiertas en todas las
+	// placas MCI
+	if (tipoplaca < 5) {
+	    valvsabiertas = IR
+		    .cuantasvalvsabiertas(IrrisoftConstantes.PLACA_MCI_1);
+	    valvsabiertas = valvsabiertas
+		    + IR.cuantasvalvsabiertas(IrrisoftConstantes.PLACA_MCI_2);
+	    valvsabiertas = valvsabiertas
+		    + IR.cuantasvalvsabiertas(IrrisoftConstantes.PLACA_MCI_3);
+	    valvsabiertas = valvsabiertas
+		    + IR.cuantasvalvsabiertas(IrrisoftConstantes.PLACA_MCI_4);
+	} else {
+	    // Es una BT2 o Samcla
+	    valvsabiertas = IR.cuantasvalvsabiertas(tipoplaca);
+	}
+
+	// Calculo la intensidad de la línea sin ninguna valvula abierta
+	if (valvsabiertas == 0) {
+	    serialcon.cogesemaforo(tipoplaca);
+	    // compruebo si la línea está caida y si lo está espero
+	    sens.lineacaida();
+	    if (!serialcon.consultconsum(serialcon, sens))
+		serialcon.leeresp(true, tipoplaca, true, sens);
+	    else {
+		serialcon.sueltasemaforo(tipoplaca);
+	    }
+
+	    // Si la placa del amperímetro es MCI se le pone consumoresidual a 0
+	    if (tipoplaca < 5 && tipoplaca > 0)
+		consumobase = 0.0;
+	    else {
+		consumobase = Double.parseDouble(sens.getLectura());
+	    }
+	    sens.setConsumoprevio(Integer.valueOf(consumobase.intValue()));
+
+	    serialcon.sueltasemaforo(tipoplaca);
+
+	    if (logger.isInfoEnabled()) {
+		logger.info("Consumo Residual en la placa " + tipoplaca + " : "
+			+ consumobase);
+	    }
+	}
+
+	// Saco cual es el ultimo amperimetro
+	int ampmayor = 0, indice = 0;
+	for (int i = 0; i < IR.sensores.size(); i++) {
+	    if (IR.sensores.get(i).getNum_sensor().contains("Am")) {
+		if (IR.sensores.get(i).getNum_placa() > ampmayor) {
+		    ampmayor = IR.sensores.get(i).getNum_placa();
+		    indice = i;
+		}
+	    }
+	}
+	// Aviso al splash de que deje manejar Irrisoft
+	if (IR.sensores.get(indice).equals(sens)) {
+	    System.out.println("Amperimetro " + sens.getNum_sensor()
+		    + " avisa a hiloconini");
+	    synchronized (IR.hiloconfini) {
+		IR.hiloconfini.notify();
+	    }
+	}
+
+	while (true) {
+	    // Dejo que muera el hilo si irrisoft ha sido rearmado
+
+	    if (sens.isTerminar()) {
+		logger.warn("Termino el hilo de Amperimetro porque se ha rearmado Irrisoft");
+		return;
+	    }
+
+	    valvsabiertas = IR.cuantasvalvsabiertas(tipoplaca);
+
+	    if (IR.test == false)
+		automatico();
+	    else
+		test();
+
+	}
+
+    }
+
+    /**
+     * Metodo Principal del Amperimetro.
+     */
+    public void automatico() {
+
+	if (logger.isInfoEnabled()) {
+	    logger.info(("Estoy en hiloAMPERIMETRO: AUTOMATICO, sensor: "
+		    + sens.getNum_sensor() + " en la placa "
+		    + sens.getTipo_placa() + " " + sens.getNum_placa()));
+	}
+	// Calcula la intensidad
+	calculaintauto();
+    }
+
+    /**
+     * Calculo la intensidad en automatico.
+     */
+    public void calculaintauto() {
+
+	try {
+	    if (IR.test || sens.isTerminar())
+		return;
+
+	    dormirSensor();
+
+	    if (IR.test || sens.isTerminar())
+		return;
+
+	    // Actualizo la lectur anterior para su posterior comparación con la
+	    // actual
+	    lecturant = lectura;
+
+	    serialcon.cogesemaforo(tipoplaca);
+	    // compruebo si la línea está caida y si lo está espero
+	    sens.lineacaida();
+	    if (!serialcon.consultconsum(serialcon, sens)) {
+		serialcon.leeresp(true, tipoplaca, true, sens);
+	    } else {
+		serialcon.sueltasemaforo(tipoplaca);
+		return;
+	    }
+	    lectura = (int) Double.parseDouble(sens.getLectura());
+	    logger.warn("Valor de lectura: " + lectura);
+	    serialcon.sueltasemaforo(tipoplaca);
+
+	    // Mete la lectura en el sensor
+	    // sens.setLectura(Integer.toString(lectura));
+
+	    if (logger.isInfoEnabled()) {
+		logger.info("La intensidad en la placa"
+			+ tipoplaca
+			+ ", en el puerto "
+			+ serialcon.serialPort.getPortName()
+			+ " es "
+			+ (lectura - Integer.valueOf(consumobase.intValue()) + " mA"));
+	    }
+
+	    // Calculo cuanta intensidad hay en la línea de la placa
+	    // correspondiente
+	    int sumatorioint = 0;
+	    String listav = "";
+
+	    // Si es mci no distingo por placas porque sólo hay un amperímetro !
+	    if (sens.getTipo_placa().contains("CONTROLADO")) {
+
+		for (Valvula v : IR.valvsabiertastot) {
+		    if ((Integer.parseInt(v.getCodelecvalv()) < 1000)) {
+			sumatorioint = sumatorioint + v.getIntensidadmod();
+			listav = listav + v.getCodelecvalv() + ", ";
+			i++;
+		    }
+		}
+
+	    } else if (sens.getTipo_placa().contains("BT")) {
+
+		for (Valvula v : IR.listavalvsabiertas(tipoplaca)) {
+
+		    // Si es bt2 distingo por placas para quedarme con el
+		    // amperimetro correcto
+		    if (v.getNum_placa() == sens.getNum_placa()) {
+			sumatorioint = sumatorioint + v.getIntensidadmod();
+			listav = listav + v.getCodelecvalv() + ", ";
+			i++;
+		    }
+		}
+
+	    }
+
+	    if (logger.isInfoEnabled()) {
+		logger.info("SUMATORIO INTENSIDAD: " + sumatorioint);
+	    }
+
+	    // Comparo las medidas obtenidas comparandolas con las modelos si
+	    // esque hay alguna valvula abierta
+	    if (IR.valvsabiertastot.size() > 0) {
+
+		if (sumatorioint == 0 && consumobase >= 0) {
+		    if (logger.isInfoEnabled()) {
+			logger.info("Consumo en la línea normal, "
+				+ consumobase + " mA");
+		    }
+		} else {
+
+		    // Calculo la diferencia con el modelo
+		    int diferenciaint = sumatorioint
+			    - Math.abs((lectura - Integer.valueOf(consumobase
+				    .intValue())));
+
+		    if (logger.isInfoEnabled()) {
+			logger.info("Diferencia de Intensidad = "
+				+ diferenciaint);
+		    }
+		    // Se calcula un margen de diferencia para las alarmas
+		    if (Math.abs(diferenciaint) >= (sumatorioint * IrrisoftConstantes.MARGEN_ERROR_AMP) / 100) {
+			if (diferenciaint < 0) {
+			    if (logger.isWarnEnabled()) {
+				logger.warn("Hay un problema en el consumo de intensidad. Estás consumiendo "
+					+ Math.abs(diferenciaint)
+					+ " mA de más");
+			    }
+			    // Genero alarma sólo cuando la lectura actual es
+			    // diferente a la anterior: Consumo electrico
+			    // excesivo en
+			    // estaciones
+			    if (lecturant < (lectura-10) || lecturant > (lectura +10) ) {
+				gestorAlertas.insertaAlarmaAlVuelo(2007,
+					Math.abs(diferenciaint) + " mA + : "
+						+ listav);
+
+				IR.escribetextPane(
+					"\n Alerta!  "
+						+ Math.abs(diferenciaint)
+						+ " mA + en "
+						+ sens.getNum_sensor() + "\t\t",
+					IR.normal, true);
+			    }
+			} else if (diferenciaint > 0) {
+			    if (logger.isWarnEnabled()) {
+				logger.warn("Hay un problema en el consumo de intensidad. Estás consumiendo "
+					+ Math.abs(diferenciaint)
+					+ " mA de menos");
+			    }
+			    // Genero alarma sólo cuando la lectura actual es
+			    // diferente a la anterior: Consumo electrico escaso en
+			    // estaciones.
+			    if (lecturant < (lectura-10) || lecturant > (lectura +10) ) {
+				gestorAlertas.insertaAlarmaAlVuelo(2008,
+					Math.abs(diferenciaint) + " mA - : "
+						+ listav);
+
+				IR.escribetextPane(
+					"\n Alerta!  "
+						+ Math.abs(diferenciaint)
+						+ " mA - en "
+						+ sens.getNum_sensor() + "\t\t",
+					IR.normal, true);
+			    }
+			}
+
+		    }
+		}
+	    } else if (IR.valvsabiertastot.size() == 0) {
+
+		// Duermo 10 segs para que le de tiempo a comprobar la intensidad
+		// bien
+		Thread.sleep(10000);
+
+		serialcon.cogesemaforo(tipoplaca);
+		// compruebo si la línea está caida y si lo está espero
+		sens.lineacaida();
+		if (!serialcon.consultconsum(serialcon, sens)) {
+		    serialcon.leeresp(true, tipoplaca, true, sens);
+		} else {
+		    serialcon.sueltasemaforo(tipoplaca);
+		    return;
+		}
+		lectura = (int) Double.parseDouble(sens.getLectura());
+		logger.warn("Valor de lectura: " + lectura);
+		serialcon.sueltasemaforo(tipoplaca);
+
+		logger.info("ConsumoBase " + sens.getNum_sensor() + ": "
+			+ consumobase);
+
+		if (IR.valvsabiertastot.size() > 0)
+		    return;
+
+		// Si no hay valvulasabiertas chequeamos el consumo base y si es
+		// mayor (+50mA) hay que tirar la línea !!!!
+		if (lectura >= (consumobase + 50d)) {
+
+		    if (sens.getTipo_placa().contains("BT")) {
+
+			logger.warn("Tiralinea amperímetro por válvula zombie");
+			IR.escribetextPane("\nTiralinea  amperímetro (puerto "
+				+ sens.getSerial().serialPort.getPortName()
+				+ ") por válvula zombie , ", IR.fallo, true);
+			// Tenemos al menos una válvula fantasma abierta
+			serialcon.tiralineabt(sens.getSerial(),
+				IR.valvsabiertastot, true, null, null);
+
+		    }
+		    // else
+		    // serialcon.tiralineaMCI(serialcon.serialPort,
+		    // sens.getNum_placa(), IR.valvsabiertastot);
+
+		}
+
+	    }
+	} catch (Exception e) {
+	    logger.info("Error en calcula caudal auto" + e.getMessage());
+	    e.printStackTrace();
+	    IR.escribetextPane(e.getMessage(), IR.normal, true);
+	}
+    }
+
+    /**
+     * Entro en la parte de test de HiloAmperimetro.
+     */
+    public void test() {
+
+	if (logger.isInfoEnabled()) {
+	    logger.info(("Estoy en hiloamperimetro: TEST"));
+	    logger.info(" " + sens.getNum_placa());
+	}
+
+	if (IR.haycaudalimetro) {
+	    synchronized (sens.getHilosens()) {
+		try {
+		    sens.getHilosens().wait();
+		} catch (InterruptedException e) {
+		    if (logger.isErrorEnabled()) {
+			logger.error(e.getMessage());
+		    }
+		}
+	    }
+	} else {
+	    IR.esperarTiempo(IrrisoftConstantes.DELAY_SENSOR_25SEG, "test");
+	}
+	if (logger.isInfoEnabled()) {
+	    logger.info(("Estoy en hiloamperimetro: TEST , y me acaban de despertar !!"));
+	}
+
+	// Vuelvo si me han despertado y ya no hay que hacer el test
+	if (IR.test == false)
+	    return;
+
+	calculaintest();
+    }
+
+    /**
+     * Calculo intensidad en modo Test.
+     */
+    public void calculaintest() {
+
+	serialcon.cogesemaforo(tipoplaca);
+	// compruebo si la línea está caida y si lo está espero
+	sens.lineacaida();
+	if (!serialcon.consultconsum(serialcon, sens))
+	    serialcon.leeresp(true, this.tipoplaca, true, sens);
+	else {
+	    serialcon.sueltasemaforo(tipoplaca);
+	    return;
+	}
+
+	lectura = Integer.parseInt(sens.getLectura());
+	serialcon.sueltasemaforo(tipoplaca);
+
+	if (logger.isInfoEnabled()) {
+	    logger.info("Intensidad: " + lectura);
+	    logger.info("Caudal: " + sens.getLecturacau());
+	}
+	IR.paneltest.progressBar.setValue(25);
+
+	if (!IR.inicial) {
+	    IR.paneltest.lblIntenDat.setText(Integer.toString(lectura
+		    - Integer.valueOf(consumobase.intValue()))
+		    + " mA");
+
+	    // Activo los botones
+	    IR.paneltest.btnAtras.setEnabled(true);
+	    IR.paneltest.btnTestearMCI.setEnabled(true);
+	    IR.paneltest.btntesteoini.setEnabled(true);
+	    IR.paneltest.btnTestearBT2.setEnabled(true);
+	    IR.paneltest.comboBoxMCI.setEnabled(true);
+	    IR.paneltest.comboBoxBt2.setEnabled(true);
+	    IR.paneltest.btnAtras.setText("Atras");
+
+	} else
+	    IR.paneltest.lblamp.setText(Integer.toString(lectura
+		    - Integer.valueOf(consumobase.intValue()))
+		    + " mA");
+
+	if (IR.inicial) {
+	    // escribir registro en la BBDD
+	    escribeconsumtest(Integer.toString(sens.getValvula()));
+
+	    IR.esperarTiempo(IrrisoftConstantes.DELAY_SENSOR_7SEG,
+		    "calculaintest");
+
+	} else {
+
+	    IR.paneltest.lbltesteando.setText("Testeo de valvula OK");
+	    // escribir registro en la BBDD
+	    escribeconsumtest(Integer.toString(sens.getValvula()));
+	}
+
+    }
+
+    /**
+     * Escribe el consumo el la BBDD Remota (GIS) y Local.
+     * 
+     * @param valvula
+     */
+    public void escribeconsumtest(String valvula) {
+
+	IR.hiloescucha.getConnDB().insertalconsumostest(
+		Integer.toString(sens.getValvula()), sens.getLecturacau(),
+		lectura - Integer.valueOf(consumobase.intValue()));
+	IR.volcado.getCon().insertarconsumostest(
+		Integer.toString(sens.getValvula()), sens.getLecturacau(),
+		lectura - Integer.valueOf(consumobase.intValue()));
+    }
+
+    /**
+     * Duermo el sensor la frec_lect
+     */
+    private void dormirSensor() {
+
+	// TODO Tiempo variable cambiarlo por tiempo de lectura
+
+	IR.esperarTiempo(IrrisoftConstantes.DELAY_SENSOR_30SEG,
+		"dormirSensor Amperimetro");
+	// Duermo 30 seg por si ocurre la sincronización para que
+	// el hilo se muera
+	// int dormir = (int) (sens.getFrec_lect() * IrrisoftConstantes.A_MSGS);
+	//
+	// while (dormir > 0){
+	// if (sens.isTerminar())
+	// break;
+	// IR.esperarTiempo(15000,"dormirSensor Amperimetro");
+	// dormir = dormir -15000;
+	// }
+    }
+
+    @Override
+    public void propertyChange(PropertyChangeEvent evt) {
+	String nombreCampo = evt.getPropertyName();
+	if ("sincronizar".contains(nombreCampo)) {
+	    sens.setTerminar(true);
+	}
+
+    }
+
+    // ////////////////////
+    // GETTERS Y SETTERS
+    // ////////////////////
+
+    public boolean isMci() {
+	return mci;
+    }
+
+    public void setMci(boolean mci) {
+	this.mci = mci;
+    }
+
+    public int getValvsabiertas() {
+	return valvsabiertas;
+    }
+
+    public void setValvsabiertas(int valvsabiertas) {
+	this.valvsabiertas = valvsabiertas;
+    }
+
+}

@@ -1,0 +1,5 @@
+1437995100428	Rename method 'getTipo_placa'
+1437995113162	Rename method 'setTipo_placa'
+1437995128166	Rename field 'tipo_placa'
+1438253262786	Rename local variable 'j'
+1438347789146	Encapsulate field 'maestra_open'

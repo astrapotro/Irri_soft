@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">
+<refactoring comment="Move element &apos;jssc-2.8.0-javadoc.jar&apos; to &apos;mysql-connector-java-5.1.30-bin.jar&apos;&#x0A;- Original project: &apos;LucesDePapel&apos;&#x0A;- Destination element: &apos;mysql-connector-java-5.1.30-bin.jar&apos;&#x0A;- Original element: &apos;jssc-2.8.0-javadoc.jar&apos;&#x0A;- Update references to refactored element" description="Move file" element1="jssc-2.8.0-javadoc.jar" files="1" flags="589830" folders="0" id="org.eclipse.jdt.ui.move" policy="org.eclipse.jdt.ui.moveResources" qualified="false" references="true" stamp="1436262013063" target="/Irrisoft/mysql-connector-java-5.1.30-bin.jar" units="0" version="1.0"/>
+</session>

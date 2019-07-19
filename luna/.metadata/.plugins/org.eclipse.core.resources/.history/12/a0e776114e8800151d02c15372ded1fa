@@ -1,0 +1,228 @@
+package sensorespack;
+
+import irrisoftpack.Irrisoft;
+import irrisoftpack.IrrisoftConstantes;
+import irrisoftpack.SerialDriver;
+
+import java.beans.PropertyChangeEvent;
+import java.beans.PropertyChangeListener;
+import java.util.Calendar;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+public class HiloAnemometro extends Sensor implements Runnable,
+	PropertyChangeListener {
+
+    private static Logger logger = LogManager.getLogger(HiloAnemometro.class
+	    .getName());
+
+    private SerialDriver serialcon;
+    private Sensor sens;
+    Calendar cal;
+    // Buffer para tratar los bytes recibidos.
+    protected int[] bufferrespint = new int[6];
+    // Los bytes a mandar por el puerto serie.
+    byte[] churro = new byte[6];
+    // Variable de Irrisoft
+    private Irrisoft IR;
+    // Variable para calcular el tiempo.
+    private long tiempoini;
+    // Creo el objeto lectura del sensor.
+    LecturasSensor lectura = new LecturasSensor();
+
+    public HiloAnemometro(SerialDriver serial, Sensor sens) {
+	this.serialcon = serial;
+	this.sens = sens;
+	this.IR = Irrisoft.window;
+
+    }
+
+    /**
+     * Este es el hilo principal del Sensor de Viento.
+     * 
+     * @see java.lang.Runnable#run()
+     */
+    public void run() {
+
+	boolean consultaEnvio = false;
+	int frecuencia = 0;
+
+	while (true) {
+
+	    // Si habido rearme mato el hilo.
+	    if (sens.isTerminar()) {
+		logger.warn("Termino el hilo de Anemometro porque se ha rearmado Irrisoft");
+		return;
+	    }
+	    tiempoini = (System.nanoTime());
+
+	    logger.info("La frecuencia de lectura de Anemometro es: "
+		    + sens.getFrec_lect());
+
+	    // Duermo el sensor el un tiempo, para recibir otra lectura.
+	    dormirSensor();
+
+	    // Si habido rearme mato el hilo.
+	    if (sens.isTerminar()) {
+		logger.warn("Termino el hilo de Anemometro porque se ha rearmado Irrisoft");
+		return;
+	    }
+
+	    // Reconecto el puerto serie si ha caido.
+	    // serialcon.reconexionPuerto(serialcon, sens);
+
+	    // Cojo el semaforo
+	    serialcon.cogesemaforo(sens.getNum_placa());
+	    serialcon.purga_puerto(serialcon.serialPort);
+
+	    // Envio los datos al puerto serie
+	    consultaEnvio = serialcon.enviarDatosPuertoMCI(serialcon, sens);
+
+	    // Recibo la respuesta del puerto serie.
+	    byte[] bufferResp = null;
+	    if (consultaEnvio) {
+		// Duermo 100Mseg antes de leer la respuesta.
+		IR.esperarTiempo(100, "Anemometro");
+
+		bufferResp = serialcon.leerRespuestaMCI(serialcon, sens);
+	    }
+	    serialcon.purga_puerto(serialcon.serialPort);
+	    // Suelta el semaforo
+	    serialcon.sueltasemaforo(sens.getNum_placa());
+
+	    // Aumento la frecuencia
+	    frecuencia = (int) (frecuencia + ((System.nanoTime() - tiempoini) / Math
+		    .pow(10, 9)));
+
+	    if (logger.isWarnEnabled()) {
+		logger.warn("Tiempo pasado bucle hiloAnemometro: " + frecuencia);
+	    }
+
+	    // Si la respuesta es correcta, edito la respuesta.
+	    if (bufferResp != null) {
+
+		// Trato la lectura y seteo el dato.
+		lectura = sacarLecturas(bufferResp);
+
+		// Insertar registro en la pasarela
+		if (frecuencia >= sens.getFrec_env()) {
+		    // Creo la lectura para enviar a GIS.
+		    LecturasSensor lecturaFinal = cogerLectura(lectura);
+		    // Envio la lectura a GIS.
+		    enviarLecturasGIS(lecturaFinal);
+
+		    frecuencia = 0;
+		}
+	    }
+
+	}
+    }
+
+    /**
+     * Trato las lecturas para tener mis datos.
+     * 
+     * @param bufferResp2
+     * @return El valor de la lectura.
+     */
+    private LecturasSensor sacarLecturas(byte[] bufferResp2) {
+	// Le quito el signo a los bytes.
+	for (int j = 0; j < bufferrespint.length; j++) {
+
+	    bufferrespint[j] = bufferResp2[j] & 0xFF;
+
+	}
+
+	int medicion = ((bufferrespint[4] * 65536) + (bufferrespint[3] * 256))
+		+ bufferrespint[2];
+
+	if (logger.isInfoEnabled()) {
+	    logger.info("Comando_Anemometro: " + bufferrespint[0]);
+	    logger.info("Borna: " + bufferrespint[1]);
+	    logger.info("Parametro1: " + bufferrespint[2]);
+	    logger.info("PArametro2: " + bufferrespint[3]);
+	    logger.info("Parametro3: " + bufferrespint[4]);
+	    logger.info("Checksum: " + bufferrespint[5]);
+	}
+
+	if (medicion == 0) {
+	    lectura.setVelocidadAnemometro(0);
+	} else {
+	    lectura.setVelocidadAnemometro((((((sens.getRang_med_max() - sens
+		    .getRang_med_min()) / (sens.getRang_sal_max() - sens
+		    .getRang_sal_min())) * (medicion - sens.getRang_sal_min())) + sens
+		    .getRang_med_min()) / ((System.nanoTime() - tiempoini) / Math
+		    .pow(10, 9))));
+
+	    // Le pongo sólo tres decimales
+	    lectura.setVelocidadAnemometro(Math.rint(lectura
+		    .getVelocidadAnemometro() * 1000) / 1000);
+	}
+	logger.warn("Valor del Anemometro: " + lectura.getVelocidadAnemometro());
+	// Meto las lecturas al sensor
+	sens.setPulsos(medicion);
+	sens.setLectura(lectura.getVelocidadAnemometro());
+	// sens.setLectura(Double.toString(lectura.getVelocidadAnemometro()));
+	return lectura;
+    }
+
+    /**
+     * Duermo el sensor un tiempo (frec_lect) Lo duermo 2 minutos por si ocurre
+     * la sincronizacion, y tengo que matar el hilo.
+     */
+    private void dormirSensor() {
+
+	int dormir = (int) (sens.getFrec_lect() * IrrisoftConstantes.A_MSGS);
+
+	while (dormir > 0) {
+	    if (sens.isTerminar())
+		break;
+	    IR.esperarTiempo(30000, "dormirSensor Anemometro");
+	    dormir = dormir - 30000;
+	}
+    }
+
+    /**
+     * Envio las lecturas de lluvia a GIS.
+     * 
+     * @param lecturaFinal
+     */
+    private void enviarLecturasGIS(LecturasSensor lecturaFinal) {
+
+	IR.volcado.getCon().insertaregviento(lecturaFinal);
+
+    }
+
+    /**
+     * Creo la lectura de viento para enviar a GIS.
+     * 
+     * @param lect
+     * @return
+     */
+    private LecturasSensor cogerLectura(LecturasSensor lect) {
+	LecturasSensor lecViento = new LecturasSensor();
+	cal = Calendar.getInstance();
+	java.sql.Timestamp dateViento = new java.sql.Timestamp(
+		cal.getTimeInMillis());
+	lecViento.setNombreSensor(sens.getNum_sensor());
+	lecViento.setFecha(dateViento);
+	lecViento.setRiego(0);
+	lecViento.setVelocidadAnemometro(lect.getVelocidadAnemometro());
+	lecViento.setLluvia(0);
+	lecViento.setTemperatura(0);
+	lecViento.setIntru(false);
+	return lecViento;
+    }
+
+    @Override
+    public void propertyChange(PropertyChangeEvent evt) {
+	String nombreCampo = evt.getPropertyName();
+
+	// Listener para sincronizar el Proramador
+	if ("sincronizar".contains(nombreCampo)) {
+	    sens.setTerminar(true);
+	}
+
+    }
+
+}

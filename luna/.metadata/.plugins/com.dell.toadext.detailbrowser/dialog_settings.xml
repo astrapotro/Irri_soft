@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<section name="Workbench">
+	<section name="com.dell.toadext.mysql.ui.detailViewer.MySqlQueryResultViewer">
+		<section name="4ba7f7ce-614e-47e0-9f03-3e348e1a19f0#t02_tareaexec">
+			<item value="" key="where"/>
+			<list key="whereHistory">
+			</list>
+			<list key="hidden">
+			</list>
+			<list key="order">
+			</list>
+		</section>
+		<section name="5c05ee23-328a-4456-b8c2-f7665ec73a29#t21_dsalerta">
+		</section>
+		<section name="5c05ee23-328a-4456-b8c2-f7665ec73a29#t13_progvalv">
+		</section>
+		<section name="4ba7f7ce-614e-47e0-9f03-3e348e1a19f0#t14_consumo">
+		</section>
+		<section name="5c05ee23-328a-4456-b8c2-f7665ec73a29#v02_tareaexec">
+			<item value="CODPROG=1519" key="where"/>
+			<list key="whereHistory">
+				<item value="codprog=1519"/>
+				<item value="1519"/>
+				<item value="CODPROG=1211"/>
+				<item value="CODPROG=1328"/>
+				<item value="CODPROG=0211"/>
+				<item value="CODPROG=1519"/>
+			</list>
+			<list key="hidden">
+			</list>
+			<list key="order">
+			</list>
+		</section>
+		<section name="5c05ee23-328a-4456-b8c2-f7665ec73a29#t10_programa">
+		</section>
+		<section name="5c05ee23-328a-4456-b8c2-f7665ec73a29#t15_regtemp">
+			<item value="" key="where"/>
+			<list key="whereHistory">
+			</list>
+			<list key="hidden">
+			</list>
+			<list key="order">
+			</list>
+		</section>
+		<section name="5c05ee23-328a-4456-b8c2-f7665ec73a29#t03_programador">
+			<item value="codprog=1111" key="where"/>
+			<list key="whereHistory">
+				<item value="codprog=0474"/>
+				<item value="codprog=1111"/>
+			</list>
+			<list key="hidden">
+			</list>
+			<list key="order">
+			</list>
+		</section>
+		<section name="5c05ee23-328a-4456-b8c2-f7665ec73a29#v10_programa">
+		</section>
+		<section name="5c05ee23-328a-4456-b8c2-f7665ec73a29#v10_programaexec">
+		</section>
+		<section name="4ba7f7ce-614e-47e0-9f03-3e348e1a19f0#t16_regviento">
+		</section>
+		<section name="5c05ee23-328a-4456-b8c2-f7665ec73a29#t01_dstarea">
+		</section>
+		<section name="5c05ee23-328a-4456-b8c2-f7665ec73a29#t08_alerta">
+		</section>
+		<section name="5c05ee23-328a-4456-b8c2-f7665ec73a29#t16_regviento">
+			<item value="" key="where"/>
+			<list key="whereHistory">
+			</list>
+			<list key="hidden">
+			</list>
+			<list key="order">
+			</list>
+		</section>
+		<section name="4ba7f7ce-614e-47e0-9f03-3e348e1a19f0#t28_regconsumo">
+		</section>
+		<section name="5c05ee23-328a-4456-b8c2-f7665ec73a29#t02_tareaexec">
+			<item value="" key="where"/>
+			<list key="whereHistory">
+			</list>
+			<list key="hidden">
+			</list>
+			<list key="order">
+			</list>
+		</section>
+		<section name="4ba7f7ce-614e-47e0-9f03-3e348e1a19f0#t17_reglluvia">
+			<item value="" key="where"/>
+			<list key="whereHistory">
+			</list>
+			<list key="hidden">
+			</list>
+			<list key="order">
+			</list>
+		</section>
+		<section name="4ba7f7ce-614e-47e0-9f03-3e348e1a19f0#t15_regtemp">
+			<item value="" key="where"/>
+			<list key="whereHistory">
+			</list>
+			<list key="hidden">
+			</list>
+			<list key="order">
+			</list>
+		</section>
+	</section>
+	<section name="com.dell.toadext.mysql.ui.detailViewer.MySqlTableDataViewer">
+		<section name="4ba7f7ce-614e-47e0-9f03-3e348e1a19f0#prugestdropper.t17_reglluvia">
+			<item value=",113,92,109,69,1051" key="col.widths"/>
+		</section>
+		<section name="5c05ee23-328a-4456-b8c2-f7665ec73a29#gestdropper.t16_regviento">
+			<item value=",117,92,109,57,1123" key="col.widths"/>
+		</section>
+		<section name="4ba7f7ce-614e-47e0-9f03-3e348e1a19f0#prugestdropper.t16_regviento">
+			<item value=",117,92,109,57,1128" key="col.widths"/>
+		</section>
+		<section name="5c05ee23-328a-4456-b8c2-f7665ec73a29#gestdropper.t21_dsalerta">
+			<item value=",108,105,418,944" key="col.widths"/>
+		</section>
+		<section name="5c05ee23-328a-4456-b8c2-f7665ec73a29#gestdropper.t13_progvalv">
+			<item value=",113,117,105,96,77" key="col.widths"/>
+		</section>
+		<section name="5c05ee23-328a-4456-b8c2-f7665ec73a29#gestdropper.v10_programa">
+			<item value=",117,134,224,98,98,74,92,53,52,57,54,51,54,53,55,66,87,86,69,62,100" key="col.widths"/>
+		</section>
+		<section name="5c05ee23-328a-4456-b8c2-f7665ec73a29#gestdropper.v10_programaexec">
+			<item value=",117,134,121,98,98,74,92,53,52,57,54,51,54,53,55,66,87,86,69,62,100" key="col.widths"/>
+		</section>
+		<section name="5c05ee23-328a-4456-b8c2-f7665ec73a29#gestdropper.t02_tareaexec">
+			<item value=",116,92,105,100,72,67,975" key="col.widths"/>
+		</section>
+		<section name="5c05ee23-328a-4456-b8c2-f7665ec73a29#gestdropper.t08_alerta">
+			<item value=",88,164,108,92,1008" key="col.widths"/>
+		</section>
+		<section name="4ba7f7ce-614e-47e0-9f03-3e348e1a19f0#prugestdropper.t02_tareaexec">
+			<item value=",222,222,222,222,222,222,227" key="col.widths"/>
+		</section>
+		<section name="5c05ee23-328a-4456-b8c2-f7665ec73a29#prugestdropper.t10_programa">
+			<item value=",117,134,254,98,98,74,92,53,52,57,54,51,54,53,55,66,87,86,69,62,100,69" key="col.widths"/>
+		</section>
+		<section name="5c05ee23-328a-4456-b8c2-f7665ec73a29#gestdropper.v02_tareaexec">
+			<item value=",,,,,,,,," key="col.widths"/>
+		</section>
+		<section name="5c05ee23-328a-4456-b8c2-f7665ec73a29#gestdropper.t10_programa">
+			<item value=",117,134,224,98,98,74,92,53,52,57,54,51,54,53,55,66,87,86,69,62,100,69" key="col.widths"/>
+		</section>
+		<section name="5c05ee23-328a-4456-b8c2-f7665ec73a29#prugestdropper.t15_regtemp">
+			<item value=",101,92,109,122,1120" key="col.widths"/>
+		</section>
+		<section name="5c05ee23-328a-4456-b8c2-f7665ec73a29#gestdropper.t03_programador">
+			<item value=",75,92,127,122,77,74,89,78,110,80,666" key="col.widths"/>
+		</section>
+		<section name="4ba7f7ce-614e-47e0-9f03-3e348e1a19f0#prugestdropper.t28_regconsumo">
+			<item value=",139,92,164,1039" key="col.widths"/>
+		</section>
+		<section name="5c05ee23-328a-4456-b8c2-f7665ec73a29#gestdropper.t01_dstarea">
+			<item value=",100,97,1313" key="col.widths"/>
+		</section>
+	</section>
+</section>

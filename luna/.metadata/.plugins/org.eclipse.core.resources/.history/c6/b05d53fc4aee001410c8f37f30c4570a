@@ -1,0 +1,1007 @@
+package panelespack;
+
+import javax.swing.JPanel;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import graficaspack.GraficasSensores;
+import irrisoftpack.Irrisoft;
+import irrisoftpack.IrrisoftConstantes;
+
+import javax.swing.JButton;
+import javax.swing.ImageIcon;
+import javax.swing.JLabel;
+import javax.swing.SwingConstants;
+
+import java.awt.Color;
+import java.awt.Component;
+import java.awt.Dimension;
+import java.awt.Font;
+import java.awt.FontMetrics;
+import java.awt.Graphics;
+import java.awt.Image;
+import java.awt.Rectangle;
+import java.awt.Shape;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.awt.image.BufferedImage;
+import java.awt.image.ImageObserver;
+
+import org.jfree.chart.ChartFactory;
+import org.jfree.chart.ChartPanel;
+import org.jfree.chart.ChartUtilities;
+import org.jfree.chart.JFreeChart;
+
+import java.io.File;
+
+import org.jfree.chart.plot.*;
+
+import java.io.*;
+import java.text.AttributedCharacterIterator;
+
+import org.jfree.data.category.DefaultCategoryDataset;
+import org.jfree.data.time.Day;
+import org.jfree.data.time.TimeSeriesCollection;
+
+import sensorespack.Sensor;
+
+import java.awt.Panel;
+import java.awt.Canvas;
+import java.awt.Button;
+import java.beans.PropertyChangeEvent;
+import java.beans.PropertyChangeListener;
+import javax.swing.border.TitledBorder;
+
+public class Panelecturasbt2 extends JPanel implements PropertyChangeListener {
+
+    /**
+     * 
+     */
+    private static final long serialVersionUID = 1L;
+
+    private static Logger logger = LogManager.getLogger(Panelecturasbt2.class
+	    .getName());
+
+    // SINGLETON
+    private static Panelecturasbt2 instance;
+
+    // JLabels de las lecturas
+    private JLabel lbltitulo, lbllecturamp, lblecturapulsos, lblectsensor1,
+	    lblecturacau, lblectsensor2, lblectsensor3, lblectsensor4,
+	    lblectsensor5, lblectsensor6, lblectsensor7;
+    // JLABEL de los textos de los sensores de Humedad
+    private JLabel lblsensor1, lblsensor2, lblsensor3, lblsensor4, lblsensor5,
+	    lblsensor6, lblsensor7;
+    // JLABEL del los textos de caudalimetro y amperimetro
+    private JLabel lblcaudalimetro, lblamperimetro;
+    // JBUTTON de la graficas. 2 graficas de caudalimetro y 1 de amperimetro.
+    private JButton btnGrafica, btnGraficaPulsos, GraficaAmp;
+
+    // JBUTTON de las graficas de los sensores del 1 al 7.
+    private JButton buttonSensor1, buttonSensor2, buttonSensor3, buttonSensor4,
+	    buttonSensor5, buttonSensor6, buttonSensor7;
+
+    // private boolean actualizar = true;
+
+    public int tipo = -1;
+
+    public int[] listaconsumosamp = new int[4];
+    public int[] listapulsoscau = new int[4];
+    public float[] listacaudales = { 0, 0, 0, 0 };
+    private Irrisoft IR;
+
+    // public muestrainfo hilomuestrainfo;
+
+    public Thread hiloinfo;
+
+    public static Panelecturasbt2 getInstance() {
+
+	if (instance == null) {
+	    instance = new Panelecturasbt2();
+	}
+	return instance;
+    }
+
+    private Panelecturasbt2() {
+	super();	
+	setBorder(new TitledBorder(null, "Lecturas Sensores", TitledBorder.LEADING, TitledBorder.TOP, null, null));
+	this.IR = Irrisoft.window;
+	this.setBounds((IR.panelizq.getWidth()/2)-225, 150, 465, 348);
+	setLayout(null);
+
+	lbltitulo = new JLabel("");
+	lbltitulo.setFont(new Font("Dialog", Font.BOLD | Font.ITALIC, 15));
+	lbltitulo.setHorizontalAlignment(SwingConstants.CENTER);
+	lbltitulo.setBounds(12, 12, 441, 25);
+	add(lbltitulo);
+
+	// lbltitulo = new JLabel("");
+	// lbltitulo.setFont(new Font("Dialog", Font.BOLD, 13));
+	// lbltitulo.setHorizontalAlignment(SwingConstants.CENTER);
+	// lbltitulo.setBounds(12, 12, 441, 25);
+	// add(lbltitulo);
+
+	lblamperimetro = new JLabel("");
+	lblamperimetro.setHorizontalAlignment(SwingConstants.RIGHT);
+	lblamperimetro.setBounds(12, 47, 124, 15);
+	add(lblamperimetro);
+
+
+	lblcaudalimetro = new JLabel("");
+	lblcaudalimetro.setHorizontalAlignment(SwingConstants.RIGHT);
+	lblcaudalimetro.setBounds(12, 74, 124, 15);
+	add(lblcaudalimetro);
+
+	lbllecturamp = new JLabel("");
+	lbllecturamp.setBounds(148, 47, 207, 15);
+	add(lbllecturamp);
+
+	lblecturapulsos = new JLabel("");
+	lblecturapulsos.setHorizontalAlignment(SwingConstants.LEFT);
+	lblecturapulsos.setBounds(148, 70, 160, 19);
+	add(lblecturapulsos);
+
+	lblecturacau = new JLabel("");
+	lblecturacau.setHorizontalAlignment(SwingConstants.LEFT);
+	lblecturacau.setBounds(148, 95, 160, 21);
+	add(lblecturacau);
+
+	lblsensor1 = new JLabel("");
+	lblsensor1.setHorizontalAlignment(SwingConstants.RIGHT);
+	lblsensor1.setBounds(32, 128, 104, 15);
+	add(lblsensor1);
+
+	lblsensor2 = new JLabel("");
+	lblsensor2.setHorizontalAlignment(SwingConstants.RIGHT);
+	lblsensor2.setBounds(32, 155, 104, 15);
+	add(lblsensor2);
+
+	lblsensor3 = new JLabel("");
+	lblsensor3.setHorizontalAlignment(SwingConstants.RIGHT);
+	lblsensor3.setBounds(32, 182, 104, 15);
+	add(lblsensor3);
+
+	lblsensor4 = new JLabel("");
+	lblsensor4.setHorizontalAlignment(SwingConstants.RIGHT);
+	lblsensor4.setBounds(32, 209, 104, 15);
+	add(lblsensor4);
+
+	lblsensor5 = new JLabel("");
+	lblsensor5.setHorizontalAlignment(SwingConstants.RIGHT);
+	lblsensor5.setBounds(32, 230, 104, 15);
+	add(lblsensor5);
+
+	lblsensor6 = new JLabel("");
+	lblsensor6.setHorizontalAlignment(SwingConstants.RIGHT);
+	lblsensor6.setBounds(32, 252, 104, 15);
+	add(lblsensor6);
+
+	lblsensor7 = new JLabel("");
+	lblsensor7.setHorizontalAlignment(SwingConstants.RIGHT);
+	lblsensor7.setBounds(32, 271, 104, 15);
+	add(lblsensor7);
+
+	lblectsensor1 = new JLabel("");
+	lblectsensor1.setBounds(148, 128, 211, 15);
+	add(lblectsensor1);
+
+	lblectsensor2 = new JLabel("");
+	lblectsensor2.setBounds(148, 155, 211, 15);
+	add(lblectsensor2);
+
+	lblectsensor3 = new JLabel("");
+	lblectsensor3.setBounds(148, 182, 211, 15);
+	add(lblectsensor3);
+
+	lblectsensor4 = new JLabel("");
+	lblectsensor4.setBounds(148, 209, 211, 15);
+	add(lblectsensor4);
+
+	lblectsensor5 = new JLabel("");
+	lblectsensor5.setBounds(148, 230, 211, 15);
+	add(lblectsensor5);
+
+	lblectsensor6 = new JLabel("");
+	lblectsensor6.setBounds(148, 252, 211, 15);
+	add(lblectsensor6);
+
+	lblectsensor7 = new JLabel("");
+	lblectsensor7.setBounds(148, 271, 211, 15);
+	add(lblectsensor7);
+
+	// BOTON ATRAS
+	JButton btnAtras = new JButton("Atras");
+	btnAtras.setBounds(178, 315, 117, 25);
+	btnAtras.addActionListener(new ActionListener() {
+	    public void actionPerformed(ActionEvent arg0) {
+		for (int i = 0; i < IR.sensores.size(); i++) {
+
+		    IR.sensores.get(i).removePropertyChangeListener("lectura",
+			    IR.panelecturasbt2);
+		    IR.sensores.get(i).removePropertyChangeListener("pulsos",
+			    IR.panelecturasbt2);
+
+		}
+		// dejará de acutalizar las lecturas
+		// setActualizar(false);
+		IR.panelecturasbt2.setVisible(false);
+		IR.panelecturas.setVisible(true);
+	    }
+	});
+	add(btnAtras);
+
+	
+	//GRAFICA DE CAUDAL
+	btnGrafica = new JButton("caudal");
+	btnGrafica.setFont(new Font("Dialog", Font.PLAIN, 8));
+	btnGrafica.setEnabled(false);
+	btnGrafica.setVisible(false);
+	btnGrafica.addActionListener(new ActionListener() {
+	    public void actionPerformed(ActionEvent arg0) {
+
+		IR.grafSensores = GraficasSensores.getInstance();
+		IR.grafSensores.setTitulo("Caudal estimado del caudalimetro");
+		IR.grafSensores.setEjex("Caudal estimado l/s");
+		IR.grafSensores.setEjey("Hora");
+		Thread hiloCaudal = new Thread(IR.grafSensores);
+		hiloCaudal.start();
+
+		// Thread hilografica = new Thread (IR.vent_graf_cau);
+		// IR.vent_graf_cau.setPlaca(2);
+		// IR.vent_graf_cau.setTipo(tipo);
+		// IR.vent_graf_cau.setCaudal(true);
+		for (int i = 0; i < IR.sensores.size(); i++) {
+		    if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_5
+			    && IR.sensores.get(i).getNum_sensor()
+				    .contains("Pu")) {
+			IR.sensores.get(i).addPropertyChangeListener("lectura",
+				IR.grafSensores);
+		    } else if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_6
+			    && IR.sensores.get(i).getNum_sensor()
+				    .contains("Pu")) {
+			IR.sensores.get(i).addPropertyChangeListener("lectura",
+				IR.grafSensores);
+		    } else if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_7
+			    && IR.sensores.get(i).getNum_sensor()
+				    .contains("Pu")) {
+			IR.sensores.get(i).addPropertyChangeListener("lectura",
+				IR.grafSensores);
+		    } else if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_8
+			    && IR.sensores.get(i).getNum_sensor()
+				    .contains("Pu")) {
+			IR.sensores.get(i).addPropertyChangeListener("lectura",
+				IR.grafSensores);
+		    }
+		}
+
+		// PAro el timer si está dado
+		// if (IR.vent_graf_cau.timer!=null)
+		// IR.vent_graf_cau.timer.stop();
+		//
+		// hilografica.start();
+		//
+
+	    }
+	});
+	btnGrafica.setBounds(326, 92, 127, 21);
+	redimensionado_icono(btnGrafica, "/irrisoftpack/imagenes/chart.png");
+	add(btnGrafica);
+
+	
+	//GRAFICA DE PULSOS
+	btnGraficaPulsos = new JButton("pulsos");
+	btnGraficaPulsos.setFont(new Font("Dialog", Font.PLAIN, 8));
+	btnGraficaPulsos.setToolTipText("Gráfica pulsos");
+	btnGraficaPulsos.setEnabled(false);
+	btnGraficaPulsos.setVisible(false);
+	btnGraficaPulsos.addActionListener(new ActionListener() {
+	    public void actionPerformed(ActionEvent paramActionEvent) {
+
+		IR.grafSensores = GraficasSensores.getInstance();
+		IR.grafSensores.setTitulo("Pulsos nuevos del caudalimetro");
+		IR.grafSensores.setEjex("Pulsos Nuevos");
+		IR.grafSensores.setEjey("Hora");
+		Thread hiloCaudal = new Thread(IR.grafSensores);
+		hiloCaudal.start();
+
+		for (int i = 0; i < IR.sensores.size(); i++) {
+		    if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_5
+			    && IR.sensores.get(i).getNum_sensor()
+				    .contains("Pu")) {
+			IR.sensores.get(i).addPropertyChangeListener("pulsos",
+				IR.grafSensores);
+		    } else if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_6
+			    && IR.sensores.get(i).getNum_sensor()
+				    .contains("Pu")) {
+			IR.sensores.get(i).addPropertyChangeListener("pulsos",
+				IR.grafSensores);
+		    } else if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_7
+			    && IR.sensores.get(i).getNum_sensor()
+				    .contains("Pu")) {
+			IR.sensores.get(i).addPropertyChangeListener("pulsos",
+				IR.grafSensores);
+		    } else if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_8
+			    && IR.sensores.get(i).getNum_sensor()
+				    .contains("Pu")) {
+			IR.sensores.get(i).addPropertyChangeListener("pulsos",
+				IR.grafSensores);
+		    }
+		}
+		//
+		// Thread hilografica = new Thread (IR.vent_graf_cau);
+		// IR.vent_graf_cau.queplaca = getLbltitulo().getText();
+		// IR.vent_graf_cau.setPlaca(2);
+		// IR.vent_graf_cau.setTipo(tipo);
+		// IR.vent_graf_cau.setCaudal(false);
+		//
+		// //PAro el timer si está dado
+		// if (IR.vent_graf_cau.timer!=null)
+		// IR.vent_graf_cau.timer.stop();
+		//
+		// hilografica.start();
+		//
+
+	    }
+	});
+	btnGraficaPulsos.setBounds(326, 68, 127, 20);
+	redimensionado_icono(btnGraficaPulsos, "/irrisoftpack/imagenes/chart.png");
+	add(btnGraficaPulsos);
+
+	
+	//GRAFICA DE AMPERAJE
+	GraficaAmp = new JButton("");
+	GraficaAmp.setFont(new Font("Dialog", Font.PLAIN, 7));
+	GraficaAmp.setToolTipText("Gráfica");
+	GraficaAmp.setEnabled(false);
+	GraficaAmp.setVisible(false);
+	GraficaAmp.addActionListener(new ActionListener() {
+	    public void actionPerformed(ActionEvent paramActionEvent) {
+
+		IR.grafSensores = GraficasSensores.getInstance();
+		IR.grafSensores.setTitulo("Amperaje estimado del amperimetro");
+		IR.grafSensores.setEjex("Intensidad estimada mA");
+		IR.grafSensores.setEjey("Hora");
+		Thread hiloCaudal = new Thread(IR.grafSensores);
+		hiloCaudal.start();
+
+		for (int i = 0; i < IR.sensores.size(); i++) {
+		    if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_5
+			    && IR.sensores.get(i).getNum_sensor()
+				    .contains("Am")) {
+			IR.sensores.get(i).addPropertyChangeListener("lectura",
+				IR.grafSensores);
+		    } else if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_6
+			    && IR.sensores.get(i).getNum_sensor()
+				    .contains("Am")) {
+			IR.sensores.get(i).addPropertyChangeListener("lectura",
+				IR.grafSensores);
+		    } else if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_7
+			    && IR.sensores.get(i).getNum_sensor()
+				    .contains("Am")) {
+			IR.sensores.get(i).addPropertyChangeListener("lectura",
+				IR.grafSensores);
+		    } else if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_8
+			    && IR.sensores.get(i).getNum_sensor()
+				    .contains("Am")) {
+			IR.sensores.get(i).addPropertyChangeListener("lectura",
+				IR.grafSensores);
+		    }
+		}
+		//
+		// Thread hilografica = new Thread (IR.vent_graf_cau);
+		// IR.vent_graf_cau.queplaca = getLbltitulo().getText();
+		// IR.vent_graf_cau.setPlaca(2);
+		// IR.vent_graf_cau.setTipo(tipo);
+		// IR.vent_graf_cau.setCaudal(false);
+		//
+		// //PAro el timer si está dado
+		// if (IR.vent_graf_cau.timer!=null)
+		// IR.vent_graf_cau.timer.stop();
+		//
+		// hilografica.start();
+		//
+
+	    }
+	});
+	GraficaAmp.setBounds(388, 42, 65, 20);
+	redimensionado_icono(GraficaAmp, "/irrisoftpack/imagenes/chart.png");
+	add(GraficaAmp);
+	
+	//Grafica Sensor 1
+	buttonSensor1 = new JButton("");
+	buttonSensor1.setToolTipText("Gráfica");
+
+	buttonSensor1.setEnabled(false);
+	buttonSensor1.setBounds(389, 123, 66, 20);
+	redimensionado_icono(buttonSensor1, "/irrisoftpack/imagenes/chart.png");
+	buttonSensor1.setVisible(false);
+	buttonSensor1.addActionListener(new ActionListener() {
+	    public void actionPerformed(ActionEvent e) {
+
+		IR.grafSensores = GraficasSensores.getInstance();
+		IR.grafSensores.setEjex("Valores");
+		IR.grafSensores.setEjey("Hora");
+		Thread hiloCaudal = new Thread(IR.grafSensores);
+		hiloCaudal.start();
+
+		for (int i = 0; i < IR.sensores.size(); i++) {
+		    if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_5
+			    && IR.sensores.get(i).getNum_borna() == 2) {
+			IR.sensores.get(i).addPropertyChangeListener("lectura",
+				IR.grafSensores);
+			IR.grafSensores.setTitulo("Grafica "+IR.sensores.get(i).getNum_sensor());
+		    } else if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_6
+			    && IR.sensores.get(i).getNum_borna() == 2) {
+			IR.sensores.get(i).addPropertyChangeListener("lectura",
+				IR.grafSensores);
+			IR.grafSensores.setTitulo("Grafica "+IR.sensores.get(i).getNum_sensor());
+		    } else if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_7
+			    && IR.sensores.get(i).getNum_borna() == 2) {
+			IR.sensores.get(i).addPropertyChangeListener("lectura",
+				IR.grafSensores);
+			IR.grafSensores.setTitulo("Grafica "+IR.sensores.get(i).getNum_sensor());
+		    } else if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_8
+			    && IR.sensores.get(i).getNum_borna() == 2) {
+			IR.sensores.get(i).addPropertyChangeListener("lectura",
+				IR.grafSensores);
+			IR.grafSensores.setTitulo("Grafica "+IR.sensores.get(i).getNum_sensor());
+		    }
+		}
+	    }
+	});
+	add(buttonSensor1);
+
+	
+
+
+
+	// Grafica Sensor 2
+
+	buttonSensor2 = new JButton("");
+	buttonSensor2.setEnabled(false);
+	buttonSensor2.setToolTipText("Gráfica");
+	buttonSensor2.setBounds(388, 147, 67, 20);
+	redimensionado_icono(buttonSensor2, "/irrisoftpack/imagenes/chart.png");
+	buttonSensor2.setVisible(false);
+	buttonSensor2.addActionListener(new ActionListener() {
+	    public void actionPerformed(ActionEvent e) {
+
+		IR.grafSensores = GraficasSensores.getInstance();
+		IR.grafSensores.setEjex("Valores");
+		IR.grafSensores.setEjey("Hora");
+		Thread hiloCaudal = new Thread(IR.grafSensores);
+		hiloCaudal.start();
+
+		for (int i = 0; i < IR.sensores.size(); i++) {
+		    if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_5
+			    && IR.sensores.get(i).getNum_borna() == 3) {
+			IR.sensores.get(i).addPropertyChangeListener("lectura",
+				IR.grafSensores);
+			IR.grafSensores.setTitulo("Grafica "+IR.sensores.get(i).getNum_sensor());
+		    } else if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_6
+			    && IR.sensores.get(i).getNum_borna() == 3) {
+			IR.sensores.get(i).addPropertyChangeListener("lectura",
+				IR.grafSensores);
+			IR.grafSensores.setTitulo("Grafica "+IR.sensores.get(i).getNum_sensor());
+		    } else if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_7
+			    && IR.sensores.get(i).getNum_borna() == 3) {
+			IR.sensores.get(i).addPropertyChangeListener("lectura",
+				IR.grafSensores);
+			IR.grafSensores.setTitulo("Grafica "+IR.sensores.get(i).getNum_sensor());
+		    } else if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_8
+			    && IR.sensores.get(i).getNum_borna() == 3) {
+			IR.sensores.get(i).addPropertyChangeListener("lectura",
+				IR.grafSensores);
+			IR.grafSensores.setTitulo("Grafica "+IR.sensores.get(i).getNum_sensor());
+		    }
+		}
+	    }
+	});
+	add(buttonSensor2);
+
+	
+	
+
+	// Grafica Sensor 3
+	buttonSensor3 = new JButton("");
+	buttonSensor3.setToolTipText("Gráfica");
+	buttonSensor3.setEnabled(false);
+	buttonSensor3.setBounds(388, 174, 67, 20);
+	redimensionado_icono(buttonSensor3, "/irrisoftpack/imagenes/chart.png");
+	buttonSensor3.setVisible(false);
+	buttonSensor3.addActionListener(new ActionListener() {
+	    public void actionPerformed(ActionEvent e) {
+
+		IR.grafSensores = GraficasSensores.getInstance();
+		IR.grafSensores.setEjex("Valores");
+		IR.grafSensores.setEjey("Hora");
+		Thread hiloCaudal = new Thread(IR.grafSensores);
+		hiloCaudal.start();
+
+		for (int i = 0; i < IR.sensores.size(); i++) {
+		    if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_5
+			    && IR.sensores.get(i).getNum_borna() == 4) {
+			IR.sensores.get(i).addPropertyChangeListener("lectura",
+				IR.grafSensores);
+			IR.grafSensores.setTitulo("Grafica "+IR.sensores.get(i).getNum_sensor());
+		    } else if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_6
+			    && IR.sensores.get(i).getNum_borna() == 4) {
+			IR.sensores.get(i).addPropertyChangeListener("lectura",
+				IR.grafSensores);
+			IR.grafSensores.setTitulo("Grafica "+IR.sensores.get(i).getNum_sensor());
+		    } else if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_7
+			    && IR.sensores.get(i).getNum_borna() == 4) {
+			IR.sensores.get(i).addPropertyChangeListener("lectura",
+				IR.grafSensores);
+			IR.grafSensores.setTitulo("Grafica "+IR.sensores.get(i).getNum_sensor());
+		    } else if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_8
+			    && IR.sensores.get(i).getNum_borna() == 4) {
+			IR.sensores.get(i).addPropertyChangeListener("lectura",
+				IR.grafSensores);
+			IR.grafSensores.setTitulo("Grafica "+IR.sensores.get(i).getNum_sensor());
+		    }
+		}
+	    }
+	});
+	add(buttonSensor3);
+
+	
+	
+
+
+	// Grafica Sensor 4
+	buttonSensor4 = new JButton("");
+	buttonSensor4.setToolTipText("Gráfica");
+	buttonSensor4.setEnabled(false);
+	buttonSensor4.setBounds(389, 202, 66, 20);
+	redimensionado_icono(buttonSensor4, "/irrisoftpack/imagenes/chart.png");
+	buttonSensor4.setVisible(false);
+	buttonSensor4.addActionListener(new ActionListener() {
+	    public void actionPerformed(ActionEvent e) {
+
+		IR.grafSensores = GraficasSensores.getInstance();
+		IR.grafSensores.setEjex("Valores");
+		IR.grafSensores.setEjey("Hora");
+		Thread hiloCaudal = new Thread(IR.grafSensores);
+		hiloCaudal.start();
+
+		for (int i = 0; i < IR.sensores.size(); i++) {
+		    if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_5
+			    && IR.sensores.get(i).getNum_borna() == 5) {
+			IR.sensores.get(i).addPropertyChangeListener("lectura",
+				IR.grafSensores);
+			IR.grafSensores.setTitulo("Grafica "+IR.sensores.get(i).getNum_sensor());
+		    } else if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_6
+			    && IR.sensores.get(i).getNum_borna() == 5) {
+			IR.sensores.get(i).addPropertyChangeListener("lectura",
+				IR.grafSensores);
+			IR.grafSensores.setTitulo("Grafica "+IR.sensores.get(i).getNum_sensor());
+		    } else if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_7
+			    && IR.sensores.get(i).getNum_borna() == 5) {
+			IR.sensores.get(i).addPropertyChangeListener("lectura",
+				IR.grafSensores);
+			IR.grafSensores.setTitulo("Grafica "+IR.sensores.get(i).getNum_sensor());
+		    } else if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_8
+			    && IR.sensores.get(i).getNum_borna() == 5) {
+			IR.sensores.get(i).addPropertyChangeListener("lectura",
+				IR.grafSensores);
+			IR.grafSensores.setTitulo("Grafica "+IR.sensores.get(i).getNum_sensor());
+		    }
+		}
+	    }
+	});
+	add(buttonSensor4);
+
+	
+	
+
+	// Grafica Sensor5
+	buttonSensor5 = new JButton("");
+	buttonSensor5.setToolTipText("Gráfica");
+	buttonSensor5.setEnabled(false);
+	buttonSensor5.setBounds(388, 226, 67, 20);
+	redimensionado_icono(buttonSensor5, "/irrisoftpack/imagenes/chart.png");
+	buttonSensor5.setVisible(false);
+	buttonSensor5.addActionListener(new ActionListener() {
+	    public void actionPerformed(ActionEvent e) {
+
+		IR.grafSensores = GraficasSensores.getInstance();
+		IR.grafSensores.setEjex("Valores");
+		IR.grafSensores.setEjey("Hora");
+		Thread hiloCaudal = new Thread(IR.grafSensores);
+		hiloCaudal.start();
+
+		for (int i = 0; i < IR.sensores.size(); i++) {
+		    if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_5
+			    && IR.sensores.get(i).getNum_borna() == 6) {
+			IR.sensores.get(i).addPropertyChangeListener("lectura",
+				IR.grafSensores);
+			IR.grafSensores.setTitulo("Grafica "+IR.sensores.get(i).getNum_sensor());
+		    } else if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_6
+			    && IR.sensores.get(i).getNum_borna() == 6) {
+			IR.sensores.get(i).addPropertyChangeListener("lectura",
+				IR.grafSensores);
+			IR.grafSensores.setTitulo("Grafica "+IR.sensores.get(i).getNum_sensor());
+		    } else if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_7
+			    && IR.sensores.get(i).getNum_borna() == 6) {
+			IR.sensores.get(i).addPropertyChangeListener("lectura",
+				IR.grafSensores);
+			IR.grafSensores.setTitulo("Grafica "+IR.sensores.get(i).getNum_sensor());
+		    } else if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_8
+			    && IR.sensores.get(i).getNum_borna() == 6) {
+			IR.sensores.get(i).addPropertyChangeListener("lectura",
+				IR.grafSensores);
+			IR.grafSensores.setTitulo("Grafica "+IR.sensores.get(i).getNum_sensor());
+		    }
+		}
+	    }
+	});
+	add(buttonSensor5);
+
+	
+
+	// Grafica Sensor 6
+	buttonSensor6 = new JButton("");
+	buttonSensor6.setToolTipText("Gráfica");
+	buttonSensor6.setEnabled(false);
+	buttonSensor6.setBounds(389, 249, 66, 20);
+	redimensionado_icono(buttonSensor6, "/irrisoftpack/imagenes/chart.png");
+	buttonSensor6.setVisible(false);
+	buttonSensor6.addActionListener(new ActionListener() {
+	    public void actionPerformed(ActionEvent e) {
+
+		IR.grafSensores = GraficasSensores.getInstance();
+		IR.grafSensores.setEjex("Valores");
+		IR.grafSensores.setEjey("Hora");
+		Thread hiloCaudal = new Thread(IR.grafSensores);
+		hiloCaudal.start();
+
+		for (int i = 0; i < IR.sensores.size(); i++) {
+		    if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_5
+			    && IR.sensores.get(i).getNum_borna() == 7) {
+			IR.sensores.get(i).addPropertyChangeListener("lectura",
+				IR.grafSensores);
+			IR.grafSensores.setTitulo("Grafica "+IR.sensores.get(i).getNum_sensor());
+		    } else if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_6
+			    && IR.sensores.get(i).getNum_borna() == 7) {
+			IR.sensores.get(i).addPropertyChangeListener("lectura",
+				IR.grafSensores);
+			IR.grafSensores.setTitulo("Grafica "+IR.sensores.get(i).getNum_sensor());
+		    } else if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_7
+			    && IR.sensores.get(i).getNum_borna() == 7) {
+			IR.sensores.get(i).addPropertyChangeListener("lectura",
+				IR.grafSensores);
+			IR.grafSensores.setTitulo("Grafica "+IR.sensores.get(i).getNum_sensor());
+		    } else if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_8
+			    && IR.sensores.get(i).getNum_borna() == 7) {
+			IR.sensores.get(i).addPropertyChangeListener("lectura",
+				IR.grafSensores);
+			IR.grafSensores.setTitulo("Grafica "+IR.sensores.get(i).getNum_sensor());
+		    }
+		}
+	    }
+	});
+	add(buttonSensor6);
+
+	
+	// Grafica Sensor 7
+	buttonSensor7 = new JButton("");
+	buttonSensor7.setToolTipText("Gráfica");
+	buttonSensor7.setEnabled(false);
+	buttonSensor7.setBounds(390, 273, 65, 20);
+	redimensionado_icono(buttonSensor7, "/irrisoftpack/imagenes/chart.png");
+	buttonSensor7.setVisible(false);
+	buttonSensor7.addActionListener(new ActionListener() {
+	    public void actionPerformed(ActionEvent e) {
+
+		IR.grafSensores = GraficasSensores.getInstance();
+		IR.grafSensores.setEjex("Valores");
+		IR.grafSensores.setEjey("Hora");
+		Thread hiloCaudal = new Thread(IR.grafSensores);
+		hiloCaudal.start();
+
+		for (int i = 0; i < IR.sensores.size(); i++) {
+		    if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_5
+			    && IR.sensores.get(i).getNum_borna() == 8) {
+			IR.sensores.get(i).addPropertyChangeListener("lectura",
+				IR.grafSensores);
+			IR.grafSensores.setTitulo("Grafica "+IR.sensores.get(i).getNum_sensor());
+		    } else if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_6
+			    && IR.sensores.get(i).getNum_borna() == 8) {
+			IR.sensores.get(i).addPropertyChangeListener("lectura",
+				IR.grafSensores);
+			IR.grafSensores.setTitulo("Grafica "+IR.sensores.get(i).getNum_sensor());
+		    } else if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_7
+			    && IR.sensores.get(i).getNum_borna() == 8) {
+			IR.sensores.get(i).addPropertyChangeListener("lectura",
+				IR.grafSensores);
+			IR.grafSensores.setTitulo("Grafica "+IR.sensores.get(i).getNum_sensor());
+		    } else if (IR.sensores.get(i).getNum_placa() == IrrisoftConstantes.PLACA_BT2_8
+			    && IR.sensores.get(i).getNum_borna() == 8) {
+			IR.sensores.get(i).addPropertyChangeListener("lectura",
+				IR.grafSensores);
+			IR.grafSensores.setTitulo("Grafica "+IR.sensores.get(i).getNum_sensor());
+		    }
+		}
+	    }
+	});
+	add(buttonSensor7);
+
+    }
+
+    
+    
+    
+    /**
+     * Redimensionado iconos botones
+     * 
+     * @param JButton
+     * @param ruta
+     */
+    public void redimensionado_icono(JButton boton, String ruta) {
+	Image img = new ImageIcon(Irrisoft.class.getResource(ruta)).getImage();
+	Image newimg = img.getScaledInstance(boton.getWidth()/2,
+		boton.getHeight()-2, java.awt.Image.SCALE_SMOOTH);
+	boton.setIcon(new ImageIcon(newimg));
+    }
+
+    // GETTERS y SETTERS
+    public JLabel getLbltitulo() {
+	return lbltitulo;
+    }
+
+    public void setLbltitulo(JLabel lbltitulo) {
+	this.lbltitulo = lbltitulo;
+    }
+
+    public JLabel getLbllecturamp() {
+	return lbllecturamp;
+    }
+
+    public JLabel getLblecturacau() {
+	return lblecturapulsos;
+    }
+
+    public JLabel getLblectsensor1() {
+	return lblectsensor1;
+    }
+
+    public JLabel getLblectsensor2() {
+	return lblectsensor2;
+    }
+
+    public JLabel getLblectsensor3() {
+	return lblectsensor3;
+    }
+
+    public void setLbllecturamp(JLabel lbllecturamp) {
+	this.lbllecturamp = lbllecturamp;
+    }
+
+    public void setLblecturacau(JLabel lblecturacau) {
+	this.lblecturapulsos = lblecturacau;
+    }
+
+    public void setLblectsensor1(JLabel lblectsensor1) {
+	this.lblectsensor1 = lblectsensor1;
+    }
+
+    public void setLblectsensor2(JLabel lblectsensor2) {
+	this.lblectsensor2 = lblectsensor2;
+    }
+
+    public void setLblectsensor3(JLabel lblectsensor3) {
+	this.lblectsensor3 = lblectsensor3;
+    }
+
+    // public boolean isActualizar() {
+    // return actualizar;
+    // }
+    //
+    // public void setActualizar(boolean actualizar) {
+    // this.actualizar = actualizar;
+    // }
+
+    public JLabel getLblsensor1() {
+	return lblsensor1;
+    }
+
+    public void setLblsensor1(JLabel lblsensor1) {
+	this.lblsensor1 = lblsensor1;
+    }
+
+    public JLabel getLblsensor2() {
+	return lblsensor2;
+    }
+
+    public void setLblsensor2(JLabel lblsensor2) {
+	this.lblsensor2 = lblsensor2;
+    }
+
+    public JLabel getLblsensor3() {
+	return lblsensor3;
+    }
+
+    public void setLblsensor3(JLabel lblsensor3) {
+	this.lblsensor3 = lblsensor3;
+    }
+
+    public JLabel getLblsensor4() {
+	return lblsensor4;
+    }
+
+    public void setLblsensor4(JLabel lblsensor4) {
+	this.lblsensor4 = lblsensor4;
+    }
+
+    public JLabel getLblsensor5() {
+	return lblsensor5;
+    }
+
+    public void setLblsensor5(JLabel lblsensor5) {
+	this.lblsensor5 = lblsensor5;
+    }
+
+    public JLabel getLblsensor6() {
+	return lblsensor6;
+    }
+
+    public void setLblsensor6(JLabel lblsensor6) {
+	this.lblsensor6 = lblsensor6;
+    }
+
+    public JLabel getLblsensor7() {
+	return lblsensor7;
+    }
+
+    public void setLblsensor7(JLabel lblsensor7) {
+	this.lblsensor7 = lblsensor7;
+    }
+
+    public JLabel getLblcaudalimetro() {
+	return lblcaudalimetro;
+    }
+
+    public void setLblcaudalimetro(JLabel lblcaudalimetro) {
+	this.lblcaudalimetro = lblcaudalimetro;
+    }
+
+    public JLabel getLblamperimetro() {
+	return lblamperimetro;
+    }
+
+    public void setLblamperimetro(JLabel lblamperimetro) {
+	this.lblamperimetro = lblamperimetro;
+    }
+
+    public JButton getBtnGrafica() {
+	return btnGrafica;
+    }
+
+    public void setBtnGrafica(JButton btnGrafica) {
+	this.btnGrafica = btnGrafica;
+    }
+
+    public JButton getBtnGraficaPulsos() {
+	return btnGraficaPulsos;
+    }
+
+    public void setBtnGraficaPulsos(JButton btnGraficaPulsos) {
+	this.btnGraficaPulsos = btnGraficaPulsos;
+    }
+
+    public JButton getGraficaAmp() {
+	return GraficaAmp;
+    }
+
+    public void setGraficaAmp(JButton graficaAmp) {
+	GraficaAmp = graficaAmp;
+    }
+
+    public JButton getButtonSensor1() {
+	return buttonSensor1;
+    }
+
+    public void setButtonSensor1(JButton buttonSensor1) {
+	this.buttonSensor1 = buttonSensor1;
+    }
+
+    public JButton getButtonSensor2() {
+	return buttonSensor2;
+    }
+
+    public void setButtonSensor2(JButton buttonSensor2) {
+	this.buttonSensor2 = buttonSensor2;
+    }
+
+    public JButton getButtonSensor3() {
+	return buttonSensor3;
+    }
+
+    public void setButtonSensor3(JButton buttonSensor3) {
+	this.buttonSensor3 = buttonSensor3;
+    }
+
+    public JButton getButtonSensor4() {
+	return buttonSensor4;
+    }
+
+    public void setButtonSensor4(JButton buttonSensor4) {
+	this.buttonSensor4 = buttonSensor4;
+    }
+
+    public JButton getButtonSensor5() {
+	return buttonSensor5;
+    }
+
+    public void setButtonSensor5(JButton buttonSensor5) {
+	this.buttonSensor5 = buttonSensor5;
+    }
+
+    public JButton getButtonSensor6() {
+	return buttonSensor6;
+    }
+
+    public void setButtonSensor6(JButton buttonSensor6) {
+	this.buttonSensor6 = buttonSensor6;
+    }
+
+    public JButton getButtonSensor7() {
+	return buttonSensor7;
+    }
+
+    public void setButtonSensor7(JButton buttonSensor7) {
+	this.buttonSensor7 = buttonSensor7;
+    }
+
+    @Override
+    public void propertyChange(PropertyChangeEvent e) {
+
+	String nombreCampo = e.getPropertyName();
+
+	Sensor sens = (Sensor) e.getSource();
+
+	// Para las lecturas normales (Lecturas)
+	if ("lectura".equals(nombreCampo)) {
+
+	    if (sens.getTipo() == IrrisoftConstantes.SENSOR_AMPERIMETRO) {
+
+		this.lbllecturamp.setText(sens.getNum_sensor() + " , "
+			+ (String) e.getNewValue() + " " + sens.getUni_med());
+	    } else if (sens.getTipo() == IrrisoftConstantes.SENSOR_CAUDALIMETRO) {
+		this.lblecturacau.setText(sens.getNum_sensor() + " , "
+			+ (String) e.getNewValue() + " " + sens.getUni_med());
+
+	    } 
+//	    else if (sens.getTipo() == IrrisoftConstantes.SENSOR_HIGROMETRO) {
+		if (lblectsensor1.getText() == ""  &&  sens.getNum_borna() == 2)
+		    this.lblectsensor1.setText(sens.getNum_sensor() + " , " + (String) e.getNewValue() + " " + sens.getUni_med());
+		else if (lblectsensor2.getText() == "" && sens.getNum_borna() == 3)
+		    this.lblectsensor2.setText(sens.getNum_sensor() + " , " + (String) e.getNewValue() + " " + sens.getUni_med());
+		else if (lblectsensor3.getText() == ""  && sens.getNum_borna() == 4)
+		    this.lblectsensor3.setText(sens.getNum_sensor() + " , " + (String) e.getNewValue() + " " + sens.getUni_med());
+		else if (lblectsensor4.getText() == ""  && sens.getNum_borna() == 5)
+		    this.lblectsensor4.setText(sens.getNum_sensor() + " , " + (String) e.getNewValue() + " " + sens.getUni_med());
+		else if (lblectsensor5.getText() == ""  && sens.getNum_borna() == 6)
+		    this.lblectsensor5.setText(sens.getNum_sensor() + " , " + (String) e.getNewValue() + " " + sens.getUni_med());
+		else if (lblectsensor6.getText() == ""  && sens.getNum_borna() == 7)
+		    this.lblectsensor6.setText(sens.getNum_sensor() + " , " + (String) e.getNewValue() + " " + sens.getUni_med());
+		else if (lblectsensor7.getText() == ""  && sens.getNum_borna() == 8)
+		    this.lblectsensor7.setText(sens.getNum_sensor() + " , " + (String) e.getNewValue() + " " + sens.getUni_med());
+
+	    //}
+	}
+	// Para las lecturas digitales (pulsos)
+	else if ("pulsos".equals(nombreCampo)) {
+
+	    if (sens.getTipo() == IrrisoftConstantes.SENSOR_CAUDALIMETRO) {
+
+		this.lblecturapulsos.setText(sens.getNum_sensor() + " , "
+			+ e.getNewValue() + " pulsos");
+	    }
+
+	}
+
+    }
+}

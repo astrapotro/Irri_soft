@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<section name="Workbench">
+	<item value="2" key="org.eclipse.egit.ui.internal.clone.GitSelectWizardPageWizardSel"/>
+	<item value="710" key="DIALOG_WIDTH"/>
+	<item value="1|Cantarell|11.0|0|GTK|1|" key="DIALOG_FONT_NAME"/>
+	<item value="true" key="CommitDialog.showUntracked"/>
+	<item value="/home/mikel/git/comprueba3g/.git" key="GitSelectRepositoryPage.lastRepository"/>
+	<item value="586" key="DIALOG_HEIGHT"/>
+	<item value="605" key="DIALOG_X_ORIGIN"/>
+	<item value="22" key="DIALOG_Y_ORIGIN"/>
+	<list key="RepositorySelectionPage.UsedUris">
+		<item value="https://github.com/astrapotro/comprueba3g.git"/>
+		<item value="ssh://mikel3@10.0.0.13/opt/git/argisoft.git"/>
+		<item value="ssh://mikel3@diego.pericaingenieria.net:22/opt/git/"/>
+		<item value="ssh://mikel@diego.pericaingenieria.net:22/opt/git/"/>
+		<item value="mikel3@diego.pericaingenieria.net:/opt/git/irrisoft.git"/>
+		<item value="mikel3@diego.pericaigenieria.net:/opt/git/irrisoft.git"/>
+		<item value="mikel3@diego.pericaingenieria.net:/opt/git/argisoft.git"/>
+	</list>
+	<list key="CommitDialog.authorValues">
+		<item value="mikelm &lt;mikelm.viverosperica@gmail.com&gt;"/>
+		<item value="mikelm &lt;astrapotro@gmail.com&gt;"/>
+	</list>
+	<list key="CommitDialog.committerValues">
+		<item value="mikelm &lt;mikelm.viverosperica@gmail.com&gt;"/>
+		<item value="mikelm &lt;astrapotro@gmail.com&gt;"/>
+	</list>
+	<section name="org.eclipse.egit.ui.internal.dialogs.ResetTargetSelectionDialog.dialogBounds">
+		<item value="1301" key="DIALOG_WIDTH"/>
+		<item value="1|Cantarell|11.0|0|GTK|1|" key="DIALOG_FONT_NAME"/>
+		<item value="807" key="DIALOG_HEIGHT"/>
+		<item value="310" key="DIALOG_X_ORIGIN"/>
+		<item value="22" key="DIALOG_Y_ORIGIN"/>
+	</section>
+	<section name="org.eclipse.egit.ui.internal.dialogs.RebaseTargetSelectionDialog.dialogBounds">
+		<item value="613" key="DIALOG_WIDTH"/>
+		<item value="1|Cantarell|11.0|0|GTK|1|" key="DIALOG_FONT_NAME"/>
+		<item value="506" key="DIALOG_HEIGHT"/>
+		<item value="654" key="DIALOG_X_ORIGIN"/>
+		<item value="22" key="DIALOG_Y_ORIGIN"/>
+	</section>
+	<section name="GitImportWizard">
+		<item value="true" key="GitProjectsImportPage.STORE_NESTED_PROJECTS"/>
+	</section>
+	<section name="org.eclipse.egit.ui.internal.push.PushResultDialog.dialogBounds">
+		<item value="1406" key="DIALOG_WIDTH"/>
+		<item value="1|Cantarell|11.0|0|GTK|1|" key="DIALOG_FONT_NAME"/>
+		<item value="589" key="DIALOG_HEIGHT"/>
+		<item value="257" key="DIALOG_X_ORIGIN"/>
+		<item value="22" key="DIALOG_Y_ORIGIN"/>
+	</section>
+	<section name="org.eclipse.egit.ui.internal.pull.PullResultDialog.dialogBounds">
+		<item value="1147" key="DIALOG_WIDTH"/>
+		<item value="1|Cantarell|11.0|0|GTK|1|" key="DIALOG_FONT_NAME"/>
+		<item value="700" key="DIALOG_HEIGHT"/>
+		<item value="565" key="DIALOG_X_ORIGIN"/>
+		<item value="166" key="DIALOG_Y_ORIGIN"/>
+	</section>
+	<section name="org.eclipse.egit.ui.internal.merge.MergeResultDialog.dialogBounds">
+		<item value="513" key="DIALOG_WIDTH"/>
+		<item value="1|Cantarell|11.0|0|GTK|1|" key="DIALOG_FONT_NAME"/>
+		<item value="629" key="DIALOG_HEIGHT"/>
+		<item value="704" key="DIALOG_X_ORIGIN"/>
+		<item value="22" key="DIALOG_Y_ORIGIN"/>
+	</section>
+	<section name="org.eclipse.egit.ui.COMMIT_DIALOG_SECTION">
+		<item value="677" key="DIALOG_WIDTH"/>
+		<item value="1|Cantarell|11.0|0|GTK|1|" key="DIALOG_FONT_NAME"/>
+		<item value="938" key="DIALOG_HEIGHT"/>
+		<item value="622" key="DIALOG_X_ORIGIN"/>
+		<item value="22" key="DIALOG_Y_ORIGIN"/>
+	</section>
+	<section name="GitCommitMessageComponent">
+		<list key="/home/mikel/git/irrisoft/.git">
+			<item value="empty"/>
+		</list>
+		<list key="/home/mikel/git/argisoft/.git">
+			<item value="empty"/>
+		</list>
+		<list key="/home/mikel/git/comprueba3g/.git">
+			<item value="empty"/>
+		</list>
+	</section>
+	<section name="org.eclipse.egit.ui.internal.dialogs.MergeTargetSelectionDialog.dialogBounds">
+		<item value="613" key="DIALOG_WIDTH"/>
+		<item value="1|Cantarell|11.0|0|GTK|1|" key="DIALOG_FONT_NAME"/>
+		<item value="756" key="DIALOG_HEIGHT"/>
+		<item value="654" key="DIALOG_X_ORIGIN"/>
+		<item value="22" key="DIALOG_Y_ORIGIN"/>
+	</section>
+	<section name="org.eclipse.egit.ui.internal.fetch.FetchResultDialog.dialogBounds">
+		<item value="613" key="DIALOG_WIDTH"/>
+		<item value="1|Cantarell|11.0|0|GTK|1|" key="DIALOG_FONT_NAME"/>
+		<item value="470" key="DIALOG_HEIGHT"/>
+		<item value="654" key="DIALOG_X_ORIGIN"/>
+		<item value="215" key="DIALOG_Y_ORIGIN"/>
+	</section>
+	<section name="GitCommitSearchPage">
+		<item value="0" key="HISTORY_SIZE"/>
+	</section>
+</section>

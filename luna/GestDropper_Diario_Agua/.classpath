@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<classpath>
+	<classpathentry kind="src" path="src"/>
+	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
+	<classpathentry kind="lib" path="/Irrisoft/mysql-connector-java-5.1.30-bin.jar"/>
+	<classpathentry kind="lib" path="jcalendar-1.4.jar"/>
+	<classpathentry kind="lib" path="/Irrisoft/joda-time-2.3-javadoc.jar"/>
+	<classpathentry kind="lib" path="/Irrisoft/joda-time-2.3.jar">
+		<attributes>
+			<attribute name="javadoc_location" value="jar:platform:/resource/Irrisoft0.3.40/joda-time-2.3-javadoc.jar!/"/>
+		</attributes>
+	</classpathentry>
+	<classpathentry kind="output" path="bin"/>
+</classpath>

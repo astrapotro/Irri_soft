@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">
+<refactoring comment="Rename field &apos;valvsopen&apos; in &apos;sensorespack.HiloCaudalimetro&apos; to &apos;valvsopenant&apos;&#x0A;- Original project: &apos;Irrisoft&apos;&#x0A;- Original element: &apos;sensorespack.HiloCaudalimetro.valvsopen&apos;&#x0A;- Renamed element: &apos;sensorespack.HiloCaudalimetro.valvsopenant&apos;&#x0A;- Update references to refactored element&#x0A;- Update textual occurrences in comments and strings" delegate="false" deprecate="false" description="Rename field &apos;valvsopen&apos;" flags="589826" getter="false" id="org.eclipse.jdt.ui.rename.field" input="/src&lt;sensorespack{HiloCaudalimetro.java[HiloCaudalimetro^valvsopen" name="valvsopenant" references="true" setter="false" stamp="1435925963335" textual="false" version="1.0"/>
+</session>

@@ -1,0 +1,5 @@
+﻿Public Class TABEXE
+    Public IDTAREA, CODPROG, CODELECVALV, IDDSTAREA, FCEXEC, HREXEC, VALOR As String
+
+
+End Class

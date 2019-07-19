@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">
+<refactoring comment="Rename method &apos;irrisoftpack.SerialDriver.tiralinea(...)&apos; to &apos;tiralineabt&apos;&#x0A;- Original project: &apos;Irrisoft&apos;&#x0A;- Original element: &apos;irrisoftpack.SerialDriver.tiralinea(...)&apos;&#x0A;- Renamed element: &apos;irrisoftpack.SerialDriver.tiralineabt(...)&apos;&#x0A;- Update references to refactored element" delegate="false" deprecate="false" description="Rename method &apos;tiralinea&apos;" flags="589830" id="org.eclipse.jdt.ui.rename.method" input="/src&lt;irrisoftpack{SerialDriver.java[SerialDriver~tiralinea~QSerialDriver;~QListaValvBt2;" name="tiralineabt" references="true" stamp="1433420033716" version="1.0"/>
+</session>

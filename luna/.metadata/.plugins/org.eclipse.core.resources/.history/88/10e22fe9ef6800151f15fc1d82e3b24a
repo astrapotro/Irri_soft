@@ -1,0 +1,1376 @@
+package programapack;
+
+import irrisoftpack.Irrisoft;
+import irrisoftpack.IrrisoftConstantes;
+import irrisoftpack.SerialDriver;
+
+import java.beans.PropertyChangeEvent;
+import java.beans.PropertyChangeListener;
+import java.sql.Time;
+import java.sql.Timestamp;
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
+import java.util.TimeZone;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import sensorespack.HiloCaudalimetro;
+import valvulaspack.Valvula;
+
+import org.joda.time.DateTime;
+
+import alertaspack.GestorAlertas;
+
+public class HiloPrograma implements Runnable {
+
+    private static Logger logger = LogManager.getLogger(HiloPrograma.class
+	    .getName());
+    private TareaProg tar;
+    private Programacion prog;
+    private int indicelista;
+    protected Valvula valv;
+    public DateTime datefin, dateini;;
+    private int tiempoexec, auxcuota;
+    private SerialDriver serialcon;
+    private GestorAlertas gestorAlertas;
+    private Irrisoft IR;
+    private boolean pintado = false;
+    // Flags para las alarmas hidraúlicas
+    private boolean excesoagua;
+    private boolean defectoagua;
+
+    // Variables para interactuar con el sensor de humedad de suelo
+    public boolean controlaSensHum;
+    public Long queda = 0L;
+    public DateTime dateactual;
+    public boolean pasadodehora;
+
+    /**
+     * Constructor para poder pasarle la tarea como argumento
+     * 
+     * @param tar
+     * @param z
+     * @param prog
+     */
+    public HiloPrograma(TareaProg tar, int z, Programacion prog) {
+	this.tar = tar;
+	this.indicelista = z;
+	this.prog = prog;
+	gestorAlertas = GestorAlertas.getInstance();
+	this.IR = Irrisoft.window;
+    }
+
+    @Override
+    public synchronized void run() {
+
+	// Le subo la prioridad a tope
+	Thread.currentThread().setPriority(Thread.MAX_PRIORITY);
+
+	int valvu = Integer.parseInt(tar.getCodelecvalv());
+
+	if (IrrisoftConstantes.MCI_200 > valvu) {
+	    serialcon = IR.getSerie1();
+	    valv = IR.valvsmci.getvalvmci(tar.getCodelecvalv());
+	} else if (IrrisoftConstantes.MCI_200 < valvu
+		&& IrrisoftConstantes.MCI_300 > valvu) {
+	    serialcon = IR.getSerie2();
+	    valv = IR.valvsmci2.getvalvmci(tar.getCodelecvalv());
+	} else if (IrrisoftConstantes.MCI_300 < valvu
+		&& IrrisoftConstantes.MCI_400 > valvu) {
+	    serialcon = IR.getSerie3();
+	    valv = IR.valvsmci3.getvalvmci(tar.getCodelecvalv());
+	} else if (IrrisoftConstantes.MCI_400 < valvu
+		&& IrrisoftConstantes.MCI_500 > valvu) {
+	    serialcon = IR.getSerie4();
+	    valv = IR.valvsmci4.getvalvmci(tar.getCodelecvalv());
+	} else if (IrrisoftConstantes.BT2_1000 < valvu
+		&& IrrisoftConstantes.BT2_2000 > valvu) {
+	    serialcon = IR.getSerie5();
+	    valv = IR.valvsbt2.getvalvbt2(tar.getCodelecvalv());
+	} else if (IrrisoftConstantes.BT2_2000 < valvu
+		&& IrrisoftConstantes.BT2_3000 > valvu) {
+	    serialcon = IR.getSerie6();
+	    valv = IR.valvsbt22.getvalvbt2(tar.getCodelecvalv());
+	} else if (IrrisoftConstantes.BT2_3000 < valvu
+		&& IrrisoftConstantes.BT2_4000 > valvu) {
+	    serialcon = IR.getSerie7();
+	    valv = IR.valvsbt23.getvalvbt2(tar.getCodelecvalv());
+	} else if (IrrisoftConstantes.BT2_4000 < valvu
+		&& IrrisoftConstantes.SAMCLA > valvu) {
+	    serialcon = IR.getSerie8();
+	    valv = IR.valvsbt24.getvalvbt2(tar.getCodelecvalv());
+	} else if (IrrisoftConstantes.SAMCLA < valvu) {
+	    valv = IR.valvsamcla.getvalvsamcla(tar.getCodelecvalv());
+	}
+
+	// Asocio la prog y la tarea correspondiente a la valvula
+	// valv.setTareaasoc(tar.getIdtarea());
+	// valv.setProgasoc(tar.getIdprog());
+
+	// Para que coja las de otra hora
+	// Hago esperar a que le avise el hilo anterior si no es la primera
+	// tarea !
+
+	try {
+	    if (indicelista != 0) {
+		if (logger.isInfoEnabled()) {
+		    logger.info("El hilo " + tar.getHilotar()
+			    + " de la valvula " + tar.getCodelecvalv()
+			    + " se queda ESPERANDO en el run.");
+		}
+		if (indicelista == prog.getTareasprog().size() - 1
+			&& prog.getTareasprog().get(indicelista - 1).isHecha() == 1) {
+		    // NO tengo que esperar
+		} else {
+		    synchronized (tar.hilotar) {
+			tar.hilotar.wait();
+		    }
+		    if (!prog.isEditado())
+			IR.esperarTiempo(2000,
+				"Duermo cuando me notifican en hiloprograma, valv "
+					+ tar.getCodelecvalv());
+
+		}
+	    } else {
+
+		if (prog.getHumedadsuelo() != null
+			&& !prog.getModo().contentEquals("M")) {
+		    // synchronized (tar.hilotar) {
+		    // tar.hilotar.wait();
+		    // }
+		}
+
+		// Duermo para que le de tiempo a conexiondb
+		Thread.sleep(10000);
+
+	    }
+	} catch (InterruptedException e) {
+	    if (logger.isErrorEnabled()) {
+		logger.error(e.getMessage());
+	    }
+	}
+	if (!prog.isEditado()) {
+	    // Asocio el caudalimetro a la treaprog
+	    tar.hilocau = (HiloCaudalimetro) valv.getCaudalimetro();
+	    // /////// Empiezo a gestionar el programa si no se ha pasado de
+	    // hora
+	    // (la primera siempre entra)
+	    // if(!pasadadehorafin )
+	    adminbloque(tar, indicelista);
+	}
+
+	if (prog.isEditado()) {
+	    // aviso al siguiente hilo
+	    if (prog.getTareasprog().size() > 1) {
+		// Si no es la última valvula
+		if (indicelista < prog.getTareasprog().size() - 1) {
+		    synchronized (prog.getTareasprog().get(indicelista + 1)
+			    .getHilotar()) {
+			prog.getTareasprog().get(indicelista + 1).getHilotar()
+				.notify();
+		    }
+		}
+	    }
+	}
+
+    }
+
+    // TODO Método supérfluo????
+    /**
+     * Miro si la tarea es en Serie o Paralelo y si es su hora de ejecutarse.
+     * 
+     * @param tar
+     * @param z
+     */
+    private void adminbloque(TareaProg tar, int z) {
+
+	if (prog.getTareasprog() != null) {
+
+	    if (prog.getTareasprog().size() != 0) {
+
+		if (logger.isInfoEnabled()) {
+		    logger.info("TAREA: "
+			    + prog.getTareasprog().get(z).getIdtarea()
+			    + " Valvula "
+			    + prog.getTareasprog().get(z).getCodelecvalv()
+			    + ", bloque"
+			    + prog.getTareasprog().get(z).getBloque());
+		}
+		// miro si es en serie o en paralelo
+		if (tar.getTipobloque().equalsIgnoreCase(
+			IrrisoftConstantes.BLOQUE_SERIE)) {
+		    if (logger.isInfoEnabled()) {
+			logger.info("Es SERIEs");
+		    }
+		    eslahora(tar);
+		} else if (tar.getTipobloque().equalsIgnoreCase(
+			IrrisoftConstantes.BLOQUE_PARALELO)) {
+		    if (logger.isInfoEnabled()) {
+			logger.info("Es PARALELOs");
+		    }
+		    eslahora(tar);
+		} else {
+
+		    logger.error("Tipo de adminbloque no encontrado");
+		}
+
+	    }
+	}
+    }
+
+    /**
+     * La tarea progr espera el tiempo necesario hasta su ejecución.
+     * 
+     * @param tar
+     */
+    public void eslahora(TareaProg tar) {
+
+	// relaciono la duración con la cuota del programa
+	// if ((prog.getHumedadsuelo() == null || (prog.getHumedadsuelo() !=
+	// null && prog
+	// .getModo().contains("M"))) && prog.datescambiados==false) {
+	 tar.setDuracion((int) (tar.getDuracion() * tar.getCuota()) / 100);
+	if (prog.datescambiados == false) {
+	    logger.warn("Recalculo la duracion con la cuota"
+		    + tar.getCuota() + " , valv " + tar.getCodelecvalv()+": "+tar.getDuracion());
+	   
+	}
+	// Para calcular el delay de espera de la tarea hasta su ejecución
+	Calendar cal = Calendar.getInstance();
+
+	cal.setTime(new Timestamp(Calendar.getInstance().getTime().getTime()));
+	TimeZone tz = TimeZone.getTimeZone("Europe/Madrid");
+	cal.setTimeZone(tz);
+	DateTime dateact = new DateTime(cal.get(Calendar.YEAR),
+		cal.get(Calendar.MONTH) + 1, cal.get(Calendar.DAY_OF_MONTH),
+		cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE),
+		cal.get(Calendar.SECOND));
+
+	String fecha = dateact.toString();
+	fecha = fecha.substring(0, 10);
+
+	dateini = new DateTime(tar.getFechaini());
+	datefin = new DateTime(tar.getFechafin());
+
+	// Cambio los datesfin y lo de la cuota
+	if (indicelista == 0)
+	    actualizodatescuota(tar.getDuracion(), indicelista, true,
+		    tar.getDuracion());
+
+
+	logger.info("DATEFIN eslahora: " + datefin);
+	logger.info("DATEINI eslahora: " + dateini);
+
+	long delay = dateini.toDate().getTime() - dateact.toDate().getTime();
+	queda = delay;
+
+	logger.info("DELAY: " + delay);
+
+	if (dateini.isAfter(dateact)) {
+
+	    if (indicelista == 0
+		    && !IR.cancelado
+		    && !IR.suspendido
+		    && (prog.getHumedadsuelo() == null || (prog
+			    .getHumedadsuelo() != null && !prog.getModo()
+			    .contains("A"))) && tar.getCuota() >= 15) {
+		if (logger.isInfoEnabled()) {
+		    logger.info("Programación (" + prog.getIdprograma() + ") ("
+			    + prog.getModo() + ") encontrada hoy, "
+			    + IR.formatter.format(dateact.toDate()));
+
+		}
+
+		IR.escribetextPane("\nProgramación (" + prog.getIdprograma()
+			+ ") (" + prog.getModo() + ") encontrada hoy, "
+			+ IR.formatter.format(dateact.toDate()) + ": ",
+			IR.negrita, false);
+
+	    }
+
+	    pintainfo(tar, false, Integer.toString(dateini.getHourOfDay())
+		    + ":" + Integer.toString(dateini.getMinuteOfHour()) + ":"
+		    + Integer.toString(dateini.getSecondOfMinute()));
+
+	    IR.frmIrrisoft.repaint();
+
+	    // Duermo el hilo hasta que sea la hora
+	    // try {
+	    if (delay > 0L) {
+
+		if (logger.isInfoEnabled()) {
+
+		    logger.info("Duermo hasta hora de inicio, la valvula: "
+			    + tar.getCodelecvalv());
+
+		}
+
+		// MIRAR LA HORA cada 10 segs y si es menos dormir lo que
+		// quede...
+
+		while (queda > 20000L) {
+
+		    // Flag para borrar esta tarea y avisar a las demás porque
+		    // han editado la programación
+		    if (prog.isEditado()) {
+			return;
+		    }
+
+		    cal.setTime(new Timestamp(Calendar.getInstance().getTime()
+			    .getTime()));
+		    dateact = new DateTime(cal.get(Calendar.YEAR),
+			    cal.get(Calendar.MONTH) + 1,
+			    cal.get(Calendar.DAY_OF_MONTH),
+			    cal.get(Calendar.HOUR_OF_DAY),
+			    cal.get(Calendar.MINUTE), cal.get(Calendar.SECOND));
+
+		    cal.setTime(new Timestamp(Calendar.getInstance().getTime()
+			    .getTime()));
+		    dateact = new DateTime(cal.get(Calendar.YEAR),
+			    cal.get(Calendar.MONTH) + 1,
+			    cal.get(Calendar.DAY_OF_MONTH),
+			    cal.get(Calendar.HOUR_OF_DAY),
+			    cal.get(Calendar.MINUTE), cal.get(Calendar.SECOND));
+
+		    // Si se ha reanudado el programa imprimo la próxima
+		    // apertura
+		    if (!IR.suspendido && !IR.cancelado && !pintado) {
+
+			pintainfo(
+				tar,
+				false,
+				Integer.toString(dateact.getHourOfDay())
+					+ ":"
+					+ Integer.toString(dateact
+						.getMinuteOfHour())
+					+ ":"
+					+ Integer.toString(dateact
+						.getSecondOfMinute()));
+
+		    }
+
+		    // Si ya ha llegado la hora
+		    if (dateini.isBefore(dateact)) {
+			if (logger.isInfoEnabled()) {
+			    logger.info("Ya ha llegado la hora y voy a regar");
+			}
+			break;
+		    }
+
+		    if (queda > Irrisoft.window.volcado.con.config.getTiempo()
+			    * IrrisoftConstantes.A_MSGS
+			    && queda < ((Irrisoft.window.volcado.con.config
+				    .getTiempo() + 20) * IrrisoftConstantes.A_MSGS)) {
+			// Marco la programación en Marcha tanto en la local
+			// como en la remota
+			// como en memoria
+			if (indicelista == 0) {
+			    IR.getConn().enMarchaL(prog.getIdprograma(), true);
+			    IR.volcado.getCon().enMarchaR(prog.getIdprograma(),
+				    true, Irrisoft.config.getIdrasp());
+			    prog.setEnmarcha("S");
+
+			}
+		    }
+
+		    synchronized (queda) {
+			// si es la primera tarea
+			if (queda > 20000L) {
+			    IR.esperarTiempo(
+				    IrrisoftConstantes.DELAY_ESLAHORA_10SEG,
+				    "es la hora");
+
+			    queda = queda - 10000L;
+			}
+		    }
+
+		    // si no está en marcha lo actualizo a en marcha
+		    if (queda <= 30000L
+			    && prog.getEnmarcha().contentEquals("N")) {
+
+			// Marco la programación en Marcha tanto en la local
+			// como en la remota
+			// como en memoria
+			if (indicelista == 0) {
+			    IR.getConn().enMarchaL(prog.getIdprograma(), true);
+			    IR.volcado.getCon().enMarchaR(prog.getIdprograma(),
+				    true, Irrisoft.config.getIdrasp());
+			    prog.setEnmarcha("S");
+
+			}
+		    }
+		}
+
+		accionvalv(tar);
+	    }
+
+	} else if (datefin.isAfter(dateact)) { // se ha pasado la hora de inicio
+					       // pero no la de fin
+
+	    // Marco la programación en Marcha tanto en la local
+	    // como en la remota
+	    // como en memoria
+	    if (indicelista == 0) {
+		IR.getConn().enMarchaL(prog.getIdprograma(), true);
+		IR.volcado.getCon().enMarchaR(prog.getIdprograma(), true,
+			Irrisoft.config.getIdrasp());
+		prog.setEnmarcha("S");
+
+	    }
+
+	    if (tar.getCuota() >= 15) {
+
+		if (logger.isWarnEnabled()) {
+		    logger.warn("Se ha pasado la hora de inicio. Se regarán menos valvúlas "
+			    + tar.getHoraini());
+		}
+	    }
+
+	    if (indicelista == 0
+		    && !IR.cancelado
+		    && !IR.suspendido
+		    && (prog.getHumedadsuelo() == null || (prog
+			    .getHumedadsuelo() != null && !prog.getModo()
+			    .contains("A"))) && tar.getCuota() >= 15) {
+		// IR.escribetextPane("\nProgramación (" + prog.getIdprograma()
+		// + ") empieza tarde, " + IR.hoyes + ": ",
+		// IR.negrita, false);
+
+		IR.escribetextPane("\nProgramación (" + prog.getIdprograma()
+			+ ") (" + prog.getModo() + ") empieza tarde, "
+			+ IR.formatter.format(IR.hoy) + ": ", IR.negrita, false);
+
+		// Genero alarma: Programa ya en funcionamiento
+		gestorAlertas.insertarAlarma(2010,
+			Integer.toString(prog.getIdprograma()));
+	    }
+
+	    // TODO Si hay que recalcular duración para válvula esto hay que
+	    // revisarlo !!!
+
+	    // Pongo el tiempo que lleva la tarea regado si es que lleva
+	    pintainfo(tar, true, Integer.toString(dateact.getHourOfDay()) + ":"
+		    + Integer.toString(dateact.getMinuteOfHour()) + ":"
+		    + Integer.toString(dateact.getSecondOfMinute()));
+
+	    IR.frmIrrisoft.repaint();
+
+	    if (tar.isAbierta()) {
+
+		// Genero alarma de programa ya en funcionamiento
+		if (indicelista == 0 && !IR.cancelado && !IR.suspendido
+			&& tar.getCuota() >= 15)
+		    // Genero alarma: Programa ya en funcionamiento.
+		    gestorAlertas.insertarAlarma(2010,
+			    Integer.toString(prog.getIdprograma()));
+
+		if (tar.getCuota() >= 15 && indicelista != 0)
+		    regando(tar, valv);
+		else if (indicelista == 0)
+		    regando_hum_prop(tar, valv);
+
+		cierravalv(tar, serialcon, false);
+
+		// TODO Habría que marcar el programa a activo y luego da
+		// desactivo
+		if (logger.isInfoEnabled()) {
+		    logger.info("Cierro valvula " + tar.getCodelecvalv());
+		}
+
+	    } else {
+
+		accionvalv(tar);
+	    }
+	} else { // se ha pasado la fechafin y la fechaini
+	    pasadodehora = true;
+	    try {
+		Thread.sleep(10000);
+	    } catch (InterruptedException e) {
+		// TODO Auto-generated catch block
+		e.printStackTrace();
+	    }
+	    // Si el programa está asociado a sensor de humedad tengo que regar
+	    // !!!
+	    if (prog.getHumedadsuelo() != null && !prog.getModo().contains("M")) {
+		// Marco la programación en Marcha tanto en la local
+		// como en la remota
+		// como en memoria
+		if (indicelista == 0) {
+		    IR.getConn().enMarchaL(prog.getIdprograma(), true);
+		    IR.volcado.getCon().enMarchaR(prog.getIdprograma(), true,
+			    Irrisoft.config.getIdrasp());
+		    prog.setEnmarcha("S");
+
+		}
+		accionvalv(tar);
+		return;
+	    }
+
+	    logger.warn("La tarea de la válvula" + tar.getCodelecvalv()
+		    + " se ha pasado de hora");
+	    // Si se ha pasado de horafin, es decir no TIENE que regar pero
+	    // si
+	    // avisar a la siguiente !!
+	    // aviso al siguiente hilo
+	    // si el programa tiene más de una valvula
+	    if (prog.getTareasprog().size() > 1) {
+		if (indicelista < prog.getTareasprog().size() - 1) {
+		    synchronized (prog.getTareasprog().get(indicelista + 1)
+			    .getHilotar()) {
+			prog.getTareasprog().get(indicelista + 1).getHilotar()
+				.notify();
+		    }
+		}
+	    }
+
+	    return; // Para que no me marque la tarea a hecha y pueda generar
+		    // una alarma !
+
+	}
+
+	// //Aki se ha pasado de hora con lo que la marco a hecha
+	IR.hiloescucha.connDB.actualizatareaprogpasadas(tar, false);
+
+	IR.frmIrrisoft.repaint();
+
+    }
+
+    /**
+     * 
+     * @param tar
+     */
+    public void accionvalv(TareaProg tar) {
+
+	boolean fallo = false;
+
+	if (logger.isInfoEnabled()) {
+	    logger.info("TAR: " + tar.getCodelecvalv() + ", bloque: "
+		    + tar.getBloque() + " , tipoplaca: " + tar.getTipoplaca());
+	}
+
+	// Genero alarma de programa ya en funcionamiento
+	if (indicelista == 0 && !IR.cancelado && !IR.suspendido
+		&& tar.getCuota() >= 15)
+	    // Genero alarma: Programa ya en funcionamiento.
+	    gestorAlertas.insertarAlarma(2010,
+		    Integer.toString(prog.getIdprograma()));
+
+	// Aviso a los hilos que tengan el mismo bloque para las prog
+	// PARALELAS!!
+	if (tar.getTipobloque().equalsIgnoreCase(
+		IrrisoftConstantes.BLOQUE_PARALELO)) {
+	    for (TareaProg p : prog.getTareasprog()) {
+		if (p.getBloque() == tar.getBloque()
+			&& !p.getCodelecvalv().equals(tar.getCodelecvalv())
+			&& tar.getHoraini().compareTo(p.getHoraini()) == 0) {
+
+		    synchronized (p.getHilotar()) {
+			p.getHilotar().notify();
+		    }
+		}
+	    }
+	}
+
+	if (tar.getCuota() >= 15)
+	    fallo = abrevalv(tar, serialcon);
+
+	// Sólo entro a regando si no ha fallado en la apertura o es una
+	// programación en paralelo
+	if (!fallo
+		|| tar.getTipobloque().equalsIgnoreCase(
+			IrrisoftConstantes.BLOQUE_PARALELO)) {
+	    // Si el programa está asociado a un sensor de humedad y no está
+	    // en manual
+	    if (prog.getHumedadsuelo() != null
+		    && !prog.getModo().contentEquals("M") && indicelista == 0)
+		regando_hum_prop(tar, valv);
+	    else
+		regando(tar, valv);
+	}
+
+	cierravalv(tar, serialcon, false);
+
+    }
+
+    /**
+     * Aviso al serialDriver para que habra la valvula y actualizo su estado.
+     * 
+     * @param tar
+     * @param serialcon
+     */
+    private boolean abrevalv(TareaProg tar, SerialDriver serialcon) {
+
+	boolean fallo = false;
+
+	valv.setProgasoc(tar.getIdprog());
+
+	// Abro la maestra si es necesario
+	if (!IR.suspendido && !IR.cancelado)
+	    IR.panelbt2.abremaestra();
+
+	// Si la valv es BT2 y no es la primera espero 6sgs a su apertura
+	// DESCOMENTAR para TONY
+	// if (Integer.parseInt(valv.getCodelecvalv()) > 1000 && indicelista
+	// !=0)
+	// IR.esperarTiempo(6000, "Abrevalv hiloprog()");
+
+	if (tar.getTipoplaca() != -1) {// NO es autónoma
+
+	    // Si está cancelado o suspendido no la abro
+	    if (!IR.cancelado && !IR.suspendido)
+		fallo = serialcon.abrevalv(valv);
+
+	    if (!fallo) {
+		if (!IR.cancelado && !IR.suspendido)
+		    IR.panelbt2.actestvalv(true, valv);
+	    }
+	} else {// Es samcla o autónoma
+	    IR.hiloescucha.connDB.insertafechatarea_auto(tar);
+	    // Calculo la diferencia de tiempo entre ahora y el timestamp de la
+	    // tarea
+	    long dif_tiempo = (Calendar.getInstance().getTime().getTime() - tar
+		    .getFechaini_auto().getTime()) / 1000L;
+
+	    int tiempoaux = (int) (tar.getDuracion() - dif_tiempo);
+	    // System.out.println("Tiempoaux en hiloprograma "+tiempoaux);
+
+	    // Sólo acciono si hay que regar + de 1 minuto ( si es menos NO SE
+	    // PUEDE)
+	    if (tiempoaux >= 60) {
+		// Si está cancelado no la abro
+		if (!IR.cancelado && !IR.suspendido)
+		    fallo = IR.panelsamcla.interruptor(true, valv,
+			    IR.panelsamcla.duracion_samcla(tiempoaux), true);
+
+		if (!fallo) {
+		    IR.panelbt2.actestvalv(true, valv);
+		    // TODO La línea siguiente es superflúa?????
+		    prog.getTareasprog().get(indicelista).setAbierta(true);
+		}
+	    } else {
+		logger.warn("Se ha pasado el tiempo de riego establecido para la electroválvula.\nNo se hará nada!!");
+	    }
+	}
+
+	valv.setTareaasoc(tar.getIdtarea());
+	valv.setProgasoc(tar.getIdprog());
+
+	return fallo;
+
+    }
+
+    /**
+     * Aviso al SerialDriver para que cierre la valvula y actualizo su estado.
+     * 
+     * @param tar
+     * @param serialcon
+     */
+    private boolean cierravalv(TareaProg tar, SerialDriver serialcon,
+	    boolean suspendido) {
+
+	boolean fallo = false;
+
+	if (!suspendido) {
+
+	    // aviso al siguiente hilo
+	    if (prog.getTareasprog().size() > 1) {
+		// Si no es la última valvula
+		if (indicelista < prog.getTareasprog().size() - 1) {
+		    synchronized (prog.getTareasprog().get(indicelista + 1)
+			    .getHilotar()) {
+			prog.getTareasprog().get(indicelista + 1).getHilotar()
+				.notify();
+		    }
+		}
+	    }
+	}
+
+	// Si no es BT2 espero a cerrar para que le de tiempo a abrir a la
+	// siguiente y evitar golpe de ariete
+	if (Integer.parseInt(valv.getCodelecvalv()) < 1000)
+	    IR.esperarTiempo(IrrisoftConstantes.DELAY_CIERRAVALV, "cierravalv");
+
+	if (tar.getTipoplaca() != -1) { // Si NO es SAMCLA
+
+	    if (valv.isAbierta())
+		fallo = serialcon.cierravalv(tar.getCodelecvalv(),
+			tar.getTipoplaca());
+	} else { // Si es SAMCLA
+
+	    // Para que le de tiempo a abrir a la siguiente
+	    // try {
+	    // IR.esperarTiempo(6000);
+	    // } catch (InterruptedException e) {
+	    // if (logger.isErrorEnabled()) {
+	    // logger.error("Hilo interrumpido: " + e.getMessage());
+	    // }
+	    //
+	    // }
+
+	    if (valv.isAbierta())
+		fallo = IR.panelsamcla.interruptor(false, valv,
+			IR.panelsamcla.duracion_samcla(60), true);
+
+	}
+
+	if (!fallo)
+	    IR.panelbt2.actestvalv(false, valv);
+
+	if (!suspendido)
+	    tar.setHecha(1);
+
+	// Para que sólo me cierre la maestra en la última válvula de la
+	// programación
+
+	if (valv.getCodelecvalv().equals(
+		prog.getTareasprog().get(prog.getTareasprog().size() - 1)
+			.getCodelecvalv())) {
+
+	    if (IR.maestra != null)
+		IR.panelbt2.crea_hilo_maestra(false);
+	}
+
+	return fallo;
+
+    }
+
+    /**
+     * @param tar
+     */
+    private void regando(TareaProg tar, Valvula valv) {
+
+//	System.out.println("TOY EN REGANDO: " + valv.getCodelecvalv());
+	int minuto = 0;
+	boolean suspendido = false;
+	tiempoexec = tar.getTiemporegado();
+
+	// Sólo actualizo los dates de las tareas siguientes si el programa
+	// tiene un sensor asociado y está en automático
+	// if (prog.getHumedadsuelo() != null
+	// && !prog.getModo().contentEquals("M")) {
+	// datefin = new DateTime(System.currentTimeMillis()
+	// + (tar.getDuracion() - tar.getTiemporegado()) * 1000);
+	// System.out.println("cambio datefin en REGANDO: "
+	// + valv.getCodelecvalv() + " , " + datefin);
+	// tar.setFechafin(datefin.toDate());
+	// // se lo cambio a la última para que no me borre todas las tareas en
+	// // programa de conexióndb por si se va la luz
+	// prog.getTareasprog().get(prog.getTareasprog().size() - 1)
+	// .setFechafin(tar.getFechafin());
+	// }
+
+	while (calculoduracion(tar) > 0) {
+
+	    Calendar cal = Calendar.getInstance();
+	    TimeZone tz = TimeZone.getTimeZone("Europe/Madrid");
+	    cal.setTimeZone(tz);
+	    dateactual = new DateTime(cal.get(Calendar.YEAR),
+		    cal.get(Calendar.MONTH) + 1,
+		    cal.get(Calendar.DAY_OF_MONTH),
+		    cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE),
+		    cal.get(Calendar.SECOND));
+
+	    // se ha pasado de la hora final de riego, lo paro, siempre que el
+	    // programa no lo controle el sensor de humedad!!
+	    if (dateactual.isAfter(datefin) || dateactual.isEqual(datefin)) {
+
+		if (logger.isInfoEnabled()) {
+		    logger.info("Corto porque se ha salido de la ventana de riego; datefin: "
+			    + datefin);
+		}
+		tar.setDuracion(0);
+		auxcuota = 0;
+
+	    }
+
+	    // Si el programador está suspendido cierro la válvula
+	    // correspondiente
+	    if (!suspendido) {
+		if (IR.suspendido) {
+		    suspendido = true;
+		    cierravalv(tar, serialcon, true);
+		}
+	    } else if (suspendido) { // Si el programador se reaunuda abro la
+				     // válvula
+		// correspondiente
+		if (!IR.suspendido) {
+		    suspendido = false;
+		    abrevalv(tar, serialcon);
+		}
+	    }
+
+	    if (auxcuota >= 60) {
+
+		// Comprobar funcionamiento mejorado del tiempo
+		// System.out.println("Duermo "+Thread.currentThread().getId());
+		java.util.concurrent.locks.LockSupport.parkNanos(10000000000L);
+		tiempoexec = tiempoexec + 10;
+		minuto = minuto + 10;
+		tar.setTiemporegado(tiempoexec);
+
+		// Solo miro y actualizo si la valvula está abierta y sólo
+		// cada minuto
+
+		if (minuto == 60) {
+		    minuto = 0;
+		    if (!suspendido) {
+			if (valv.isAbierta())
+			    IR.hiloescucha.connDB.ponetiemporegado(tar, null,
+				    tar.getTiemporegado());
+		    }
+		}
+
+	    } else if (auxcuota < 60 && auxcuota != 0) {
+		if (auxcuota < 10)
+		    break;
+
+		IR.esperarTiempo(IrrisoftConstantes.DELAY_REGANDO, "regando");
+		tiempoexec = tiempoexec + 10;
+		tar.setTiemporegado(tiempoexec);
+
+	    }
+	}
+
+	if (auxcuota < 0)
+	    logger.info("Corto porque se ha salido de la ventana de riego; datefin: "
+		    + datefin);
+
+	// Solo miro y actualizo si la valvula está abierta
+	if (valv.isAbierta())
+	    IR.hiloescucha.connDB.ponetiemporegado(tar, null,
+		    tar.getTiemporegado());
+
+	// Sólo actualizo los dates de las tareas siguientes si el programa
+	// tiene un sensor asociado y está en automático
+	if (prog.getHumedadsuelo() != null
+		&& !prog.getModo().contentEquals("M")) {
+	    actualizodateshum(tar.getTiemporegado(), indicelista);
+	}
+
+    }
+
+    
+    
+    /**
+     * Calculo la duracion de regado de las valvulas.
+     * 
+     * @param tar
+     * @return
+     */
+    private int calculoduracion(TareaProg tar) {
+	long diferencia = 0L;
+	if (logger.isInfoEnabled()) {
+	    logger.info("Duracion antes " + tar.getDuracion());
+	}
+
+	if ((tiempoexec == 0 && prog.getHumedadsuelo() == null)
+		|| (tiempoexec == 0 && prog.getHumedadsuelo() != null && indicelista == 0)) {
+	    // Si es de la BT2 le resto unos segundos a la duracion para que no
+	    // se me pase de madre por el retardo físico
+	    if (Integer.parseInt(tar.getCodelecvalv()) > 1000) {
+		synchronized ((Long) tar.getDuracion()) {
+		    tar.setDuracion((int) (tar.getDuracion() - tar
+			    .getTiemporegado()) - 7);
+		}
+	    } else {
+		synchronized ((Long) tar.getDuracion()) {
+		    tar.setDuracion((int) (tar.getDuracion() - tar
+			    .getTiemporegado()) - 5);
+		}
+
+	    }
+
+	    auxcuota = (int) tar.getDuracion();
+
+	} else {
+
+	    // Cuotas
+	    if (logger.isInfoEnabled()) {
+		logger.info("cuota en duracion "+tar.getCodelecvalv()+": " + tar.getCuota());
+	    }
+//	    System.out.println("duracion en regando "+tar.getCodelecvalv()+": "
+//			+ tar.getDuracion());
+	    
+	    if (tar.getDuracion() > 0) {
+
+		// Para que entre cuando hay un cambio de cuota y esté sólo en
+		// modo automático o semi
+		if (tar.isCambiocuota() && !prog.getModo().contentEquals("M")) {
+
+		    // Calculo la diferencia de las duraciones
+		    long duracion_aux = 0;
+		    duracion_aux = (((tar.getDuracion() * tar.getCuota()) / 100));
+		    diferencia = duracion_aux - tar.getTiemporegado();
+
+		    synchronized ((Long) tar.getDuracion()) {
+			tar.setDuracion(duracion_aux);
+//			System.out.println("duracion en regando "+tar.getCodelecvalv()+": "
+//				+ tar.getDuracion());
+//			System.out.println("duracion_aux "+tar.getCodelecvalv()+": " + duracion_aux);
+		    }
+
+		    long añadido = diferencia * 1000L;
+//		    System.out.println("añadido: " + añadido);
+//		    System.out.println("parametro2: "
+//			    + duracion_aux);
+
+		    if (!prog.datescambiados && diferencia != 0) {
+			actualizodatescuota(añadido, tar.hiloprog.indicelista,
+				false,
+				duracion_aux);
+			
+			prog.datescambiados = true;
+		    }
+
+		    auxcuota = (int) duracion_aux;
+		    tar.setCambiocuota(false);
+
+		    if (logger.isInfoEnabled()) {
+			logger.info("tiempo regado: " + tar.getTiemporegado());
+			logger.info("duracion tarea: " + tar.getDuracion());
+			logger.info("duracion original tarea: "
+				+ tar.getDuracionini());
+		    }
+
+		    return auxcuota;
+
+		}
+
+		// Si el programa está cancelado y en auto seteo a 0 la
+		// duración
+		if (IR.cancelado && prog.getModo().contentEquals("A")) {
+
+		    tar.setDuracion(0);
+		    auxcuota = 0;
+
+		} else {
+		    
+		    auxcuota = (int) (tar.getDuracion() - tar.getTiemporegado());
+		}
+
+		if (logger.isInfoEnabled()) {
+		    logger.info("Tiempo regado: "+tar.getTiemporegado());
+		    logger.info("Duracion con cuota: " + auxcuota);
+		}
+	    }
+	}
+
+	return auxcuota;
+
+    }
+    
+    
+    /**
+     * @param tar
+     */
+    private void regando_hum_prop(TareaProg tar, Valvula valv) {
+	System.out.println("TOY EN REGANDO_HUM_PROP: " + valv.getCodelecvalv());
+	// boolean suspendido = false;
+	tiempoexec = 0;
+	// tar.setTiemporegado(tar.getTiemporegado());
+	// datefin = new DateTime(System.currentTimeMillis()).plusDays(1);
+	// tar.setFechafin(datefin.toDate());
+	// // se lo cambio a la última para que no me borre todas las tareas en
+	// // programa de conexióndb por si se va la luz
+	// prog.getTareasprog().get(prog.getTareasprog().size() - 1)
+	// .setFechafin(tar.getFechafin());
+
+	while (!this.getProg().getHumedadsuelo().terminado) {
+
+	    // Lo comento porque la propietaria no debe atender a suspensiones
+	    // ¿?
+	    // Si el programador está suspendido cierro la válvula
+	    // correspondiente
+	    // if (!suspendido) {
+	    // if (IR.suspendido) {
+	    // suspendido = true;
+	    // cierravalv(tar, serialcon, true);
+	    // }
+	    // } else if (suspendido) { // Si el programador se reaunuda abro la
+	    // // válvula
+	    // // correspondiente
+	    // if (!IR.suspendido) {
+	    // suspendido = false;
+	    // abrevalv(tar, serialcon);
+	    // }
+	    // }
+
+	    System.out.println("Hiloprograma espera a hilohumedadsuelo");
+	    synchronized (this) {
+		try {
+		    this.wait();
+
+		} catch (InterruptedException e) {
+		    e.printStackTrace();
+		}
+	    }
+
+	    System.out
+		    .println("Hiloprograma ha sido despertado x hilohumedadsuelo");
+
+	    if (this.getProg().getHumedadsuelo().tiemporegado > 0) {
+		tar.setTiemporegado(this.getProg().getHumedadsuelo().tiemporegado);
+		// actualizo en BBDD local
+		if (valv.isAbierta())
+		    IR.hiloescucha.connDB.ponetiemporegado(tar, null,
+			    tar.getTiemporegado());
+	    }
+
+	    if (logger.isInfoEnabled()) {
+		logger.info("Humedad de suelo (prog): "
+			+ this.prog.getHumedadsuelo().getBufferresp()[4] + "%");
+		logger.info("Tiempo regado por falta de humedad (prog) : "
+			+ this.prog.getHumedadsuelo().tiemporegado + " sgs");
+	    }
+
+	}
+
+	System.out.println("Estación propietaria " + valv.getCodelecvalv()
+		+ " ya ha terminado de regar: " + tar.getTiemporegado()
+		+ " sgs");
+
+	// datefin = new DateTime(System.currentTimeMillis());
+	// //tar.setFechafin(datefin.toDate());
+	// Aki actualizo la duracion y el dateini y datefin de todas las tareas
+	// siguientes a ésta
+
+	actualizodateshum(tar.getTiemporegado(), indicelista);
+
+	try {
+	    Thread.sleep(10000);
+	} catch (InterruptedException e) {
+	    // TODO Auto-generated catch block
+	    e.printStackTrace();
+	}
+	// Aviso al sensor de humedad de que puede seguir con su ejecución
+	synchronized (this.prog.getHumedadsuelo()) {
+	    this.prog.getHumedadsuelo().notify();
+	}
+
+    }
+
+    private void actualizodateshum(long añadido, int i) {
+
+	añadido = añadido * 1000L;
+
+	if (prog.getTareasprog().size() > 1
+		&& i < prog.getTareasprog().size() - 1) {
+
+	    prog.getTareasprog().get(i + 1).setDuracion(tar.getTiemporegado());
+	    prog.getTareasprog().get(i + 1).hiloprog.dateini = new DateTime(
+		    System.currentTimeMillis());
+	    prog.getTareasprog().get(i + 1).hiloprog.datefin = new DateTime(
+		    System.currentTimeMillis() + añadido);
+	    prog.getTareasprog()
+		    .get(i + 1)
+		    .setFechaini(
+			    prog.getTareasprog().get(i + 1).hiloprog.dateini
+				    .toDate());
+	    prog.getTareasprog()
+		    .get(i + 1)
+		    .setFechafin(
+			    prog.getTareasprog().get(i + 1).hiloprog.datefin
+				    .toDate());
+
+	    // Para todas las siguientes
+	    for (int z = i + 2; z < prog.getTareasprog().size(); z++) {
+
+		prog.getTareasprog().get(z).setDuracion(tar.getTiemporegado());
+		// Si son del mismo bloque
+		if (prog.getTareasprog().get(z).getBloque() == prog
+			.getTareasprog().get(z - 1).getBloque()) {
+		    prog.getTareasprog().get(z).hiloprog.dateini = new DateTime(
+			    prog.getTareasprog().get(z - 1).getFechaini()
+				    .getTime());
+
+		    // añado el tiempo neceseario a la
+		    // fechafinal de la tarea
+		    prog.getTareasprog().get(z).hiloprog.datefin = new DateTime(
+			    prog.getTareasprog().get(z - 1).getFechafin()
+				    .getTime());
+
+		    prog.getTareasprog()
+			    .get(z)
+			    .setFechaini(
+				    prog.getTareasprog().get(z).hiloprog.dateini
+					    .toDate());
+
+		    prog.getTareasprog()
+			    .get(z)
+			    .setFechafin(
+				    prog.getTareasprog().get(z).hiloprog.datefin
+					    .toDate());
+		} else {
+		    // añado el tiempo neceseario a la
+		    // fechainicial de la tarea
+		    prog.getTareasprog().get(z).hiloprog.dateini = new DateTime(
+			    prog.getTareasprog().get(z - 1).getFechaini()
+				    .getTime()
+				    + añadido);
+
+		    // añado el tiempo neceseario a la
+		    // fechafinal de la tarea
+		    prog.getTareasprog().get(z).hiloprog.datefin = new DateTime(
+			    prog.getTareasprog().get(z - 1).getFechafin()
+				    .getTime()
+				    + (añadido + 10000L));
+
+		    prog.getTareasprog()
+			    .get(z)
+			    .setFechaini(
+				    prog.getTareasprog().get(z).hiloprog.dateini
+					    .toDate());
+
+		    prog.getTareasprog()
+			    .get(z)
+			    .setFechafin(
+				    prog.getTareasprog().get(z).hiloprog.datefin
+					    .toDate());
+		}
+
+		System.out.println("Valv "
+			+ prog.getTareasprog().get(z).getCodelecvalv()
+			+ " fechaini: "
+			+ prog.getTareasprog().get(z).getFechaini());
+		System.out.println("Valv "
+			+ prog.getTareasprog().get(z).getCodelecvalv()
+			+ " fechafin: "
+			+ prog.getTareasprog().get(z).getFechafin());
+	    }
+
+	}
+    }
+
+    private void actualizodatescuota(long añadido, int i, boolean cuotaprog,
+	    long duracion_aux) {
+
+	if (prog.getTareasprog().size() > 1 && i < prog.getTareasprog().size()) {
+
+	    if (cuotaprog) {
+		prog.getTareasprog().get(i).hiloprog.datefin = new DateTime(
+			prog.getTareasprog().get(i).hiloprog.dateini
+				.getMillis()
+				+ ((duracion_aux * 1000L) + 10000L));
+	    } else {
+		long cuanto = 0L;
+		if (tar.getTiemporegado() == 0)
+		    cuanto = duracion_aux * 1000L;
+		else
+		    cuanto = añadido;
+
+		prog.getTareasprog().get(i).hiloprog.datefin = new DateTime(
+			System.currentTimeMillis() + cuanto);
+		prog.getTareasprog().get(i).setDuracion(duracion_aux);
+	    }
+	    
+	    
+	    prog.getTareasprog()
+		    .get(i)
+		    .setFechafin(
+			    prog.getTareasprog().get(i).hiloprog.datefin
+				    .toDate());
+
+	    prog.getTareasprog().get(i).setCambiocuota(false);
+
+	    System.out
+		    .println("Valv "
+			    + prog.getTareasprog().get(i).getCodelecvalv()
+			    + " fechaini: "
+			    + prog.getTareasprog().get(i).getFechaini());
+	    System.out
+		    .println("Valv "
+			    + prog.getTareasprog().get(i).getCodelecvalv()
+			    + " fechafin: "
+			    + prog.getTareasprog().get(i).getFechafin());
+	    System.out.println("Valv "
+			+ prog.getTareasprog().get(i).getCodelecvalv()
+			+ " duracion: "
+			+ prog.getTareasprog().get(i).getDuracion());
+	    
+	    // Para todas las siguientes
+	    for (int z = i + 1; z < prog.getTareasprog().size(); z++) {
+
+		prog.getTareasprog().get(z).setCambiocuota(false);
+
+		if (!cuotaprog) {
+		    // Cambio la duración a todas
+		    synchronized ((Long) prog.getTareasprog().get(z)
+			    .getDuracion()) {
+			prog.getTareasprog().get(z).setDuracion(duracion_aux);
+		    }
+		}
+		// Si son del mismo bloque
+		if (prog.getTareasprog().get(z).getBloque() == prog
+			.getTareasprog().get(z - 1).getBloque()) {
+
+		    prog.getTareasprog().get(z).hiloprog.dateini = new DateTime(
+			    prog.getTareasprog().get(z - 1).getFechaini()
+				    .getTime());
+
+		    // añado el tiempo neceseario a la
+		    // fechafinal de la tarea
+		    prog.getTareasprog().get(z).hiloprog.datefin = new DateTime(
+			    prog.getTareasprog().get(z - 1).getFechafin()
+				    .getTime());
+
+		    prog.getTareasprog()
+			    .get(z)
+			    .setFechaini(
+				    prog.getTareasprog().get(z).hiloprog.dateini
+					    .toDate());
+
+		    prog.getTareasprog()
+			    .get(z)
+			    .setFechafin(
+				    prog.getTareasprog().get(z).hiloprog.datefin
+					    .toDate());
+		} else {
+		    // añado el tiempo neceseario a la
+		    // fechainicial de la tarea
+		    prog.getTareasprog().get(z).hiloprog.dateini = new DateTime(
+			    prog.getTareasprog().get(z - 1).getFechaini()
+				    .getTime()
+				    + (duracion_aux * 1000L));
+
+		    // añado el tiempo neceseario a la
+		    // fechafinal de la tarea
+		    prog.getTareasprog().get(z).hiloprog.datefin = new DateTime(
+			    prog.getTareasprog().get(z - 1).getFechafin()
+				    .getTime()
+				    + (duracion_aux * 1000L));
+
+		    prog.getTareasprog()
+			    .get(z)
+			    .setFechaini(
+				    prog.getTareasprog().get(z).hiloprog.dateini
+					    .toDate());
+
+		    prog.getTareasprog()
+			    .get(z)
+			    .setFechafin(
+				    prog.getTareasprog().get(z).hiloprog.datefin
+					    .toDate());
+		}
+		
+		
+		System.out.println("Valv "
+			+ prog.getTareasprog().get(z).getCodelecvalv()
+			+ " fechaini: "
+			+ prog.getTareasprog().get(z).getFechaini());
+		System.out.println("Valv "
+			+ prog.getTareasprog().get(z).getCodelecvalv()
+			+ " fechafin: "
+			+ prog.getTareasprog().get(z).getFechafin());
+		System.out.println("Valv "
+			+ prog.getTareasprog().get(z).getCodelecvalv()
+			+ " duracion: "
+			+ prog.getTareasprog().get(z).getDuracion());
+
+
+	    }
+
+	}
+    }
+
+  
+
+    /**
+     * Voy informando del estado de la valvula.
+     * 
+     * @param tar
+     * @param pasada
+     * @param horactual
+     */
+    private void pintainfo(TareaProg tar, boolean pasada, String horactual) {
+	String horaini = null;
+
+	String duracion = "";
+	String hora = "";
+	String valvula = tar.getCodelecvalv();
+
+	if (tar.getCuota() >= 15) {
+	    if (!IR.cancelado && !IR.suspendido) {
+
+		if (pasada) {
+		    horaini = Time.valueOf(horactual).toString();
+		    hora = horaini.substring(0, 8) + " hrs, ";
+		} else {
+		    horaini = new SimpleDateFormat("HH:mm:ss").format(dateini
+			    .getMillis());
+		    ;
+		    hora = horaini + " hrs, ";
+		    ;
+		}
+		if (prog.getHumedadsuelo() != null
+			&& !prog.getModo().contentEquals("M")
+			&& indicelista == 0) {
+		    duracion = "X";
+		    valvula = " prop " + valvula;
+		    if (prog.getModo().contentEquals("A")) {
+			hora = "";
+		    }
+		} else {
+		    duracion = Long.toString(tar.duracion
+			    - tar.getTiemporegado());
+		}
+		if (logger.isInfoEnabled()) {
+		    logger.info(hora + "Abrir valvula " + valvula + " "
+			    + duracion + " sgs");
+		}
+
+		IR.escribetextPane("\n   " + hora + "Abrir valvula " + valvula
+			+ " " + duracion + " sgs", IR.italic, false);
+
+		IR.frmIrrisoft.repaint();
+	    }
+	}
+	tar = null;
+	horactual = null;
+	horaini = null;
+	pintado = true;
+    }
+
+    // @Override
+    // public void propertyChange(PropertyChangeEvent evt) {
+    //
+    // String nombreCampo = evt.getPropertyName();
+    //
+    // // Listener para sincronizar el programador.
+    // if ("despertar".contains(nombreCampo)) {
+    // this.despertado = true;
+    // }
+    // if ("borronohechas".contains(nombreCampo)) {
+    //
+    // this.borronohechas = true;
+    // }
+    // }
+
+    // //////////////////////////
+    // GETTER Y SETTER
+    // //////////////////////////
+
+    public Valvula getValv() {
+	return valv;
+    }
+
+    public void setValv(Valvula valv) {
+	this.valv = valv;
+    }
+
+    public Programacion getProg() {
+	return prog;
+    }
+
+    public void setProg(Programacion prog) {
+	this.prog = prog;
+    }
+
+    public int getIndicelista() {
+	return indicelista;
+    }
+
+    public void setIndicelista(int indicelista) {
+	this.indicelista = indicelista;
+    }
+}

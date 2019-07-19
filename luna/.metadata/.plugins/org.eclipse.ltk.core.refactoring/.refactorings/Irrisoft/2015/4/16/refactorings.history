@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">
+<refactoring comment="Rename field &apos;formatfecha&apos; in &apos;irrisoftpack.ConexionDB&apos; to &apos;formatfecha_hora&apos;&#x0A;- Original project: &apos;Irrisoft&apos;&#x0A;- Original element: &apos;irrisoftpack.ConexionDB.formatfecha&apos;&#x0A;- Renamed element: &apos;irrisoftpack.ConexionDB.formatfecha_hora&apos;&#x0A;- Update references to refactored element&#x0A;- Update textual occurrences in comments and strings" delegate="false" deprecate="false" description="Rename field &apos;formatfecha&apos;" flags="589830" getter="false" id="org.eclipse.jdt.ui.rename.field" input="/src&lt;irrisoftpack{ConexionDB.java[ConexionDB^formatfecha" name="formatfecha_hora" references="true" setter="false" stamp="1429254414292" textual="false" version="1.0"/>
+</session>

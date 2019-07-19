@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<section name="Workbench">
+	<section name="MYSQL#root">
+		<section name="Databases">
+			<section name="com.dell.toadext.mysql.model.MySqlDatabase">
+				<section name="Views">
+					<section name="com.dell.toadext.mysql.model.MySqlView">
+						<section name="Columns">
+							<section name="com.dell.toadext.mysql.model.MySqlColumn">
+							</section>
+						</section>
+					</section>
+				</section>
+				<section name="Constraints">
+					<section name="com.dell.toadext.mysql.model.MySqlConstraint">
+					</section>
+				</section>
+				<section name="Events">
+					<section name="com.dell.toadext.mysql.model.MySqlEvent">
+					</section>
+				</section>
+				<section name="Tables">
+					<section name="com.dell.toadext.mysql.model.MySqlTable">
+						<section name="Constraints">
+							<section name="com.dell.toadext.mysql.model.MySqlConstraint">
+							</section>
+						</section>
+						<section name="Columns">
+							<section name="com.dell.toadext.mysql.model.MySqlColumn">
+							</section>
+						</section>
+						<section name="Triggers">
+							<section name="com.dell.toadext.mysql.model.MySqlTrigger">
+							</section>
+						</section>
+						<section name="Indexes">
+							<section name="com.dell.toadext.mysql.model.MySqlIndex">
+							</section>
+						</section>
+					</section>
+				</section>
+				<section name="Procedures">
+					<section name="com.dell.toadext.mysql.model.MySqlProcedure">
+					</section>
+				</section>
+				<section name="Functions">
+					<section name="com.dell.toadext.mysql.model.MySqlFunction">
+					</section>
+				</section>
+				<section name="Triggers">
+					<section name="com.dell.toadext.mysql.model.MySqlTrigger">
+					</section>
+				</section>
+				<section name="Indexes">
+					<section name="com.dell.toadext.mysql.model.MySqlIndex">
+					</section>
+				</section>
+			</section>
+		</section>
+		<section name="Users">
+			<section name="com.dell.toadext.mysql.model.MySqlUser">
+			</section>
+		</section>
+	</section>
+</section>

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<section name="Workbench">
+	<section name="com.dell.toadext.mysql.ui.detailViewer.MySqlViewViewer">
+	</section>
+	<section name="com.dell.toadext.mysql.ui.detailViewer.MySqlScriptViewer">
+		<section name="saveToFile">
+		</section>
+	</section>
+	<section name="com.dell.toadext.mysql.ui.detailViewer.MySqlProcedureViewer">
+		<section name="options">
+		</section>
+	</section>
+	<section name="com.dell.toadext.mysql.ui.detailViewer.MySqlTableViewer">
+	</section>
+</section>

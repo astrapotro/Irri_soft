@@ -1,0 +1,3054 @@
+package volcadopack;
+
+import irrisoftpack.Irrisoft;
+import irrisoftpack.IrrisoftConstantes;
+import irrisoftpack.Splash;
+
+import java.awt.Color;
+import java.awt.Container;
+import java.beans.PropertyChangeListener;
+import java.beans.PropertyChangeSupport;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
+import java.net.SocketException;
+import java.sql.CallableStatement;
+import java.sql.Connection;
+import java.sql.Date;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.sql.Time;
+import java.sql.Timestamp;
+import java.util.Calendar;
+import java.util.Collections;
+import java.util.Enumeration;
+import java.util.Properties;
+import java.util.TreeSet;
+
+import javax.swing.JDialog;
+
+import org.apache.commons.dbcp2.BasicDataSource;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.jasypt.util.text.BasicTextEncryptor;
+
+import sensorespack.LecturasSensor;
+import sensorespack.Sensor;
+import alertaspack.Alerta;
+import alertaspack.GestorAlertas;
+
+public class ConexionVolc {
+
+    private static Logger logger = LogManager.getLogger(ConexionVolc.class
+	    .getName());
+
+    // Parámetros de conexión y conexiones
+    public Connection cnr;
+    public Connection cnl;
+    public Conf config = null;
+    String linea = null;
+    // Variables del constructor
+    private TareaVolc tarea;
+    private Valvula valv;
+    private Programacion prog;
+    // Variables para controlar las conecxiones
+    public boolean conectador = false;
+    public boolean conectadol = false;
+    // Variable de Irrisoft
+    private Irrisoft IR;
+    // Variable Property Change
+    private PropertyChangeSupport changeSupport = new PropertyChangeSupport(
+	    this);
+
+    // Variable paraa realizar la sincronizacion
+    private boolean sincronizar = false;
+
+    private GestorAlertas ga;
+
+    private String ip = " ";
+
+    private BasicDataSource datasource;
+    private Connection conR = null;
+
+    public ConexionVolc() {
+
+	ga = GestorAlertas.getInstance();
+	// Asociamos el string al propertychange
+	addPropertyChangeListener("conectador", ga);
+	this.IR = Irrisoft.window;
+	this.tarea = new TareaVolc();
+	this.valv = new Valvula();
+	this.prog = new Programacion();
+	crearPoolConexionRemota();
+    }
+
+    // METODOS DE TAREAS Y PROGRAMAS BBDD REMOTA
+    //
+    /**
+     * Comprueba TAREAS pendientes y si las hay las copia a la local y las borra
+     * de la pasarela
+     */
+
+    protected void tarea() {
+
+	CallableStatement cs = null;
+	ResultSet rs = null;
+	Connection cnr = null;
+	try {
+
+	    // Consulto tareas pendientes de ejecutar en remoto
+	    cnr = conectar();
+
+	    cs = cnr.prepareCall("{ call P002_S_TAREAEXEC(?,?) }");
+	    cs.setString("V_CODPROG", Irrisoft.config.getIdrasp());
+	    cs.setString("V_BORRADO", "N");
+	    cs.setQueryTimeout(10);
+	    rs = cs.executeQuery();
+
+	    while (rs.next()) {
+		int iddstarea = rs.getInt("IDDSTAREA");
+		tarea.setIddstarea(iddstarea);
+		int idtareaexec = rs.getInt("IDTAREAEXEC");
+		tarea.setIdtareaexec(idtareaexec);
+		int valor = rs.getInt("VALOR");
+		tarea.setValor(valor);
+
+		if (logger.isInfoEnabled()) {
+		    logger.info("Tarea " + idtareaexec + " " + iddstarea
+			    + " para este programador");
+		}
+
+		// /MIRO QUÉ TAREA ES !!
+
+		// Si la tarea es leer una programación (3) llamo a programa
+		// para que la gestione.
+		if (IrrisoftConstantes.LEER_PROGRAMACION == iddstarea) {
+		    programa();
+		    IR.hiloescucha.connDB.leidop = false;
+		    if (logger.isInfoEnabled()) {
+			logger.info("Nuevo programa encontrado !");
+		    }
+
+		}
+		// Si no, es una tarea manual(1,2), un cambio de cuota (6), un
+		// apagado(4),
+		else if (IrrisoftConstantes.ABRIR_ESTACION == iddstarea
+			|| IrrisoftConstantes.CERRAR_ESTACION == iddstarea
+			|| IrrisoftConstantes.RECALCULO_PROGRAMACION == iddstarea
+			|| IrrisoftConstantes.APAGAR_PROGRAMADOR == iddstarea
+			|| IrrisoftConstantes.BORRAR_PROGRAMA == iddstarea
+			|| IrrisoftConstantes.REINICIAR_PROGRAMADOR == iddstarea) {
+
+		    String codprog = rs.getString("CODPROG");
+		    tarea.setCodprog(codprog);
+		    String numeresta = rs.getString("NUMERESTA");
+		    tarea.setCodelecvalv(numeresta);
+		    tarea.setIddstarea(iddstarea);
+		    Timestamp fcexec = rs.getTimestamp("FCEXEC");
+		    tarea.setFcexec(fcexec);
+		    int valor2 = rs.getInt("VALOR2");
+		    tarea.setValor2(valor2);
+		    String codtarea = rs.getString("CODTAREA");
+		    tarea.setCodtarea(codtarea);
+		    String dstarea = rs.getString("DSTAREA");
+		    tarea.setDstarea(dstarea);
+
+		    // Inserto y borro la tarea
+		    if (Insertarea())
+			Borratarea();
+
+		}
+		// Si no, si la tarea es recoger la CONFIGURACIÓN INICIAL
+		else if (IrrisoftConstantes.CONFIG_PROGRAMADOR == iddstarea
+			|| IrrisoftConstantes.CONFIG_SENSORES == iddstarea
+			|| IrrisoftConstantes.CONFIG_ESTACION == iddstarea) {
+
+		    IR.rearmar = true;
+		    if (IrrisoftConstantes.CONFIG_PROGRAMADOR == iddstarea) {
+			Borratarea();
+		    } else if (IrrisoftConstantes.CONFIG_SENSORES == iddstarea) {
+			tarea_conf_ini_sens();
+		    } else if (IrrisoftConstantes.CONFIG_ESTACION == iddstarea) {
+			tarea_conf_ini_est();
+		    }
+		    // Si no, si la tarea es cambiar el estado de las
+		    // programaciones
+		} else if (IrrisoftConstantes.SUSPENDER == iddstarea
+			|| IrrisoftConstantes.REANUDAR == iddstarea
+			|| IrrisoftConstantes.CANCELAR == iddstarea
+			|| IrrisoftConstantes.RESTABLECER == iddstarea) {
+
+		    tarea_susp_canc(rs, iddstarea, idtareaexec);
+		} else if (IrrisoftConstantes.ACTIVAR_PROG == iddstarea
+			|| IrrisoftConstantes.DESACTIVAR_PROG == iddstarea) {
+		    int idprog = rs.getInt("VALOR");
+		    if (IrrisoftConstantes.ACTIVAR_PROG == iddstarea) {
+			activar_desactivar_programa(idprog, true);
+		    } else {
+			activar_desactivar_programa(idprog, false);
+			// Borro las tareasprogdia asociadas a esa programacion
+			IR.hiloescucha.connDB.borratareaprogdia(idprog);
+		    }
+
+		} else if (IrrisoftConstantes.BORRAR_DATOS_PROGAMADOR == iddstarea) {
+		    IR.hiloescucha.getConnDB().truncartablas();
+		    IR.escribetextPane(
+			    "\nSe ha borrado todo el contenido de la BBDD local! \t\t"
+				    + "\n Sincronización necesaria del programador.",
+			    IR.negrita, true);
+		} else if (IrrisoftConstantes.CAMBIAR_PERIODO_LECTURA == iddstarea) {
+		    // Asigno el nuevo tiempo de lectura a la pasarela
+		    config.setTiempo(tarea.getValor());
+		    // Regenero el archivo Volcado.properties
+		    guardarconf_tiempo();
+		    IR.escribetextPane(
+			    "\nCambiado periodo de lectura a la pasarela GIS (BBDD remota): "
+				    + tarea.getValor() + " sgs \t", IR.negrita,
+			    true);
+		    Borratarea();
+		} else if (IrrisoftConstantes.DESACTIVAR_PROGRAMADOR == iddstarea) {
+		    IR.escribetextPane(
+			    "\nEl programador se desactivará durante : "
+				    + tarea.getValor() + " sgs \t", IR.negrita,
+			    true);
+		    try {
+			Thread.sleep(10000);
+		    } catch (InterruptedException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		    }
+		    Borratarea();
+		    IR.capturasalidash(
+			    Irrisoft.comandodesactivar_programador_tiempo,
+			    Integer.toString(tarea.getValor()));
+
+		}
+	    }
+
+	    try {
+		Thread.sleep(40000);
+	    } catch (InterruptedException e1) {
+		// TODO Auto-generated catch block
+		e1.printStackTrace();
+	    }
+	    // AKi rearmo Irrisoft con los datos propagados de la
+	    // sincronización
+	    // con GIS.
+	    if (IR.rearmar) {
+
+		// Splash mensaje de espera
+		Irrisoft.mensajesplash = new Splash(
+			"Sincronizando, espere por favor ...");
+		Thread splash = new Thread(Irrisoft.mensajesplash);
+		splash.setName("Hilo_Splash");
+		splash.start();
+
+		IR.escribetextPane("\nSincronización en curso ... \t\t",
+			IR.negrita, true);
+
+		if (logger.isInfoEnabled()) {
+		    logger.info("Voy a sincronizar el Programador");
+		}
+
+		// Seteo el valor a true para avisar a los hilos de que va
+		// haber una sincronizacion.
+		setSincronizar(true);
+
+		// Aviso al hilo VCC para matarlo y el pongo el flag
+		// pasadovcc a false
+		if (IR.hilovcc != null) {
+		    synchronized (IR.hilovcc) {
+			IR.hilovcc.notify();
+		    }
+		}
+		IR.pasadovcc = false;
+
+		// TODO posible mejora para no esperar tanto en la
+		// sincronización
+		// while (true){
+		// int muertos=0;
+		// for (int i=0;i<IR.sensores.size();i++){
+		// if (IR.sensores.get(i).getHilosens().isAlive())
+		// muertos++;
+		// }
+		// if (muertos==IR.sensores.size())
+		// break;
+		// }
+
+		int dormir = 150;
+		int cont = 0;
+		// Espero para que les de tiempo a los hilos de sensores a morir
+		while (dormir > 0) {
+		    Irrisoft.mensajesplash.progressBar.setValue(cont);
+		    IR.esperarTiempo(30000, "Sincronizacion Programador");
+		    dormir = dormir - 30;
+		    cont++;
+		}
+
+		IR.leerconfini(true);
+
+		// Espero a que leerconfini me avise para seguir
+		try {
+		    synchronized (IR.volcado) {
+			IR.volcado.wait();
+		    }
+		} catch (InterruptedException e) {
+		    // TODO Auto-generated catch block
+		    e.printStackTrace();
+		}
+
+	    }
+
+	} catch (SQLException | NullPointerException e) {
+	    if (logger.isErrorEnabled()) {
+		e.printStackTrace();
+		logger.error("Error 292");
+		logger.error("Error de Base de Datos: " + e.getMessage());
+	    }
+
+	} finally {
+	    try {
+		if (rs != null)
+		    rs.close();
+		if (cs != null)
+		    cs.close();
+		if (cnr != null)
+		    cnr.close();
+	    } catch (SQLException | NullPointerException e) {
+		if (logger.isErrorEnabled()) {
+		    logger.error("Error en la sentencia." + e.getMessage());
+		}
+		cierrar();
+	    }
+	}
+    }
+
+    private void activar_desactivar_programa(int idprog, boolean activo) {
+	PreparedStatement ps = null;
+	String act = "";
+	Connection cnl = null;
+	try {
+
+	    cnl = IR.hiloescucha.getConnDB().conectal();
+	    if (activo) {
+		act = "S";
+		ps = cnl.prepareStatement("UPDATE programa set ACTIVO='S' WHERE idprog=? ");
+		ps.setInt(1, idprog);
+		ps.executeUpdate();
+	    } else {
+		act = "N";
+		ps = cnl.prepareStatement("UPDATE programa set ACTIVO='N' WHERE idprog=?");
+		ps.setInt(0, idprog);
+		ps.executeUpdate();
+	    }
+
+	    for (int i = 0; i < IR.progs.getprogramas().size(); i++) {
+		if (IR.progs.getprogramas().get(i).getIdprograma() == idprog) {
+		    IR.progs.getprogramas().get(i).setActivo(act);
+		}
+	    }
+
+	} catch (SQLException | NullPointerException e) {
+
+	    if (e instanceof SQLException && logger.isErrorEnabled()) {
+		logger.error("No se ha podido actualizar la tarea de la programacion a hecha."
+			+ e.getMessage());
+	    } else if (e instanceof NullPointerException
+		    && logger.isErrorEnabled()) {
+		logger.error("Error de NullPointerException: " + e.getMessage());
+	    }
+	} finally {
+	    try {
+		ps.close();
+		if (cnl != null)
+		    cnl.close();
+	    } catch (SQLException | NullPointerException e) {
+		if (e instanceof SQLException && logger.isErrorEnabled()) {
+		    logger.error("Error en la sentencia." + e.getMessage());
+		} else if (e instanceof NullPointerException
+			&& logger.isErrorEnabled()) {
+		    logger.error("Error de NullPointerException: "
+			    + e.getMessage());
+		}
+		IR.hiloescucha.getConnDB().desconectal();
+	    }
+	}
+
+    }
+
+    private void tarea_susp_canc(ResultSet rs, int iddstarea, int idtareaexec)
+	    throws SQLException {
+
+	// String codtarea = rs.getString("CODTAREA");
+	String dstarea = rs.getString("DSTAREA");
+	boolean suspendido = false, cancelado = false;
+
+	IR.escribetextPane("\n Nueva tarea (" + idtareaexec + ") recibida: "
+		+ iddstarea + "-" + dstarea, IR.negrita, false);
+
+	if (IrrisoftConstantes.SUSPENDER == iddstarea) {
+
+	    for (int i = 0; i < IR.progs.getprogramas().size(); i++) {
+		if (!IR.progs.getprogramas().get(i).getModo().contains("M")
+			&& IR.progs.getprogramas().get(i).getHumedadsuelo() == null) {
+		    IR.progs.getprogramas().get(i).setSuspendido(true);
+		    suspendido = true;
+		}
+	    }
+	    // Sólo si hay programaciones en memoria
+	    if (IR.progs.getprogramas().size() > 0 && suspendido) {
+		// Actualizo el estado del programador en GIS
+		act_rem_estado_programador(Irrisoft.config.getIdrasp(), false);
+		IR.escribetextPane(
+			"\n Las programaciones (semi)automáticas se suspenderán !",
+			IR.normal, false);
+	    }
+	} else if (IrrisoftConstantes.REANUDAR == iddstarea) {
+	    // IR.suspendido = false;
+	    for (int i = 0; i < IR.progs.getprogramas().size(); i++) {
+		if (!IR.progs.getprogramas().get(i).getModo().contains("M")
+			&& IR.progs.getprogramas().get(i).getHumedadsuelo() == null) {
+		    IR.progs.getprogramas().get(i).setSuspendido(false);
+		    suspendido = true;
+		}
+	    }
+
+	    // Sólo si hay programaciones en memoria
+	    if (IR.progs.getprogramas().size() > 0 && suspendido) {
+		// Actualizo el estado del programador en GIS
+		act_rem_estado_programador(Irrisoft.config.getIdrasp(), true);
+		IR.escribetextPane(
+			"\n Las programaciones (semi)automáticas se reanudarán !",
+			IR.normal, false);
+	    }
+
+	} else if (IrrisoftConstantes.CANCELAR == iddstarea) {
+	    for (int i = 0; i < IR.progs.getprogramas().size(); i++) {
+		if (!IR.progs.getprogramas().get(i).getModo().contains("M")
+			&& IR.progs.getprogramas().get(i).getHumedadsuelo() == null) {
+		    IR.progs.getprogramas().get(i).setCancelado(true);
+		    cancelado = true;
+		}
+	    }
+	    // Sólo si hay programaciones en memoria
+	    if (IR.progs.getprogramas().size() > 0 && cancelado) {
+		// Actualizo el estado del programador en GIS
+		act_rem_estado_programador(Irrisoft.config.getIdrasp(), false);
+		IR.escribetextPane(
+			"\n Las programaciones (semi)automáticas se cancelarán!",
+			IR.normal, false);
+	    }
+
+	} else if (IrrisoftConstantes.RESTABLECER == iddstarea) {
+	    // IR.cancelado = false;
+	    for (int i = 0; i < IR.progs.getprogramas().size(); i++) {
+		if (!IR.progs.getprogramas().get(i).getModo().contains("M")
+			&& IR.progs.getprogramas().get(i).getHumedadsuelo() == null) {
+		    IR.progs.getprogramas().get(i).setCancelado(false);
+		    cancelado = true;
+		}
+	    }
+
+	    if (IR.progs.getprogramas().size() > 0 && cancelado) {
+		// Actualizo el estado del programador en GIS
+		act_rem_estado_programador(Irrisoft.config.getIdrasp(), true);
+		IR.escribetextPane(
+			"\n Las programaciones (semi)automáticas se reestablecerán !",
+			IR.normal, false);
+	    }
+	}
+
+	Borratarea();
+
+    }
+
+    private void tarea_conf_ini_sens() {
+	// Recojo la configuración inicial de SENSORES
+	CallableStatement cs1 = null;
+	ResultSet rs1 = null;
+	Connection cnr = null;
+	try {
+	    cnr = conectar();
+	    cs1 = cnr.prepareCall("{ call P062_S_CONFINISENSORES(?)}");
+
+	    cs1.setString("V_CODPROG", Irrisoft.config.getIdrasp());
+
+	    rs1 = cs1.executeQuery();
+
+	    int i = 0;
+
+	    while (rs1.next()) {
+
+		Sensor sensor = new Sensor();
+
+		sensor.setCodprog(rs1.getString(2));
+		sensor.setNum_placa(rs1.getInt(3));
+		sensor.setTipo_placa(rs1.getString(4));
+		sensor.setNum_sensor(rs1.getString(5));
+		sensor.setNum_borna(rs1.getInt(6));
+		sensor.setUni_med(rs1.getString(7));
+		sensor.setUni_sal(rs1.getString(8));
+		sensor.setRang_med_min(rs1.getDouble(9));
+		sensor.setRang_med_max(rs1.getDouble(10));
+		sensor.setRang_sal_min(rs1.getDouble(11));
+		sensor.setRang_sal_max(rs1.getDouble(12));
+		sensor.setMed_umbral_min(rs1.getDouble(13));
+		sensor.setMed_umbral_max(rs1.getDouble(14));
+		sensor.setFrec_lect(rs1.getInt(15));
+		sensor.setFrec_env(rs1.getInt(16));
+		sensor.setK(rs1.getInt(17));
+		sensor.setError_sup(rs1.getInt(18));
+		sensor.setError_inf(rs1.getInt(19));
+		sensor.setT_max_riego(rs1.getInt(20));
+		sensor.setNum_est_prop(rs1.getString(21));
+		sensor.setNum_est_asoc(rs1.getString(22));
+
+		if (i == 0)
+		    // Borro lo que haya en la tabla
+		    borratabla("conf_ini_sens");
+
+		insertarConf_ini_sens(sensor.getCodprog(),
+			sensor.getNum_placa(), sensor.getTipo_placa(),
+			sensor.getNum_sensor(), sensor.getNum_borna(),
+			sensor.getUni_med(), sensor.getUni_sal(),
+			sensor.getRang_med_min(), sensor.getRang_med_max(),
+			sensor.getRang_sal_min(), sensor.getRang_sal_max(),
+			sensor.getMed_umbral_min(), sensor.getMed_umbral_max(),
+			sensor.getFrec_lect(), sensor.getFrec_env(),
+			sensor.getK(), sensor.getError_sup(),
+			sensor.getError_inf(), sensor.getT_max_riego(),
+			sensor.getNum_est_prop(), sensor.getNum_est_asoc());
+
+		i++;
+	    }
+
+	} catch (SQLException e) {
+	    if (logger.isErrorEnabled()) {
+		logger.error("Error de sentencia SQL en tarea_conf_ini_sens:"
+			+ e.getMessage());
+	    }
+	} finally {
+	    try {
+		cs1.close();
+		rs1.close();
+		if (cnr != null)
+		    cnr.close();
+	    } catch (SQLException e) {
+		if (logger.isErrorEnabled()) {
+		    logger.error("Error al cerrar las sentencias SQL o la conexionR en tarea_conf_ini_sens: "
+			    + e.getMessage());
+		}
+		cierrar();
+	    }
+	    Borratarea();
+	}
+
+    }
+
+    private void tarea_conf_ini_est() {
+	// Recojo la configuración inicial de ESTACIONES
+
+	CallableStatement cs2 = null;
+	ResultSet rs2 = null;
+	Connection cnr = null;
+
+	try {
+	    cnr = conectar();
+	    cs2 = cnr.prepareCall("{ call P068_S_CONFINIESTACION(?)}");
+
+	    cs2.setString("V_CODPROG", Irrisoft.config.getIdrasp());
+	    rs2 = cs2.executeQuery();
+
+	    int i = 0;
+	    while (rs2.next()) {
+		int idconfiniestacion = rs2.getInt("IDCONFINIESTACION");
+		String codprog = rs2.getString("CODPROG");
+		String numeresta_ini = rs2.getString("NUMERESTA");
+		int deco = rs2.getInt("DECO");
+		int maestra = rs2.getInt("MAESTRA");
+		int lacth = rs2.getInt("LATCH");
+		int goteo = rs2.getInt("GOTEO");
+
+		if (i == 0)
+		    // Borro lo que haya en la tabla de
+		    // configuración inicial programador
+		    borratabla("conf_ini_prog");
+
+		insertarConf_ini_prog(idconfiniestacion, codprog,
+			numeresta_ini, deco, maestra, lacth, goteo);
+
+		i++;
+	    }
+
+	} catch (SQLException e) {
+	    if (logger.isErrorEnabled()) {
+		logger.error("Error de sentencia SQL en tarea_conf_ini_est:"
+			+ e.getMessage());
+	    }
+	} finally {
+	    try {
+		cs2.close();
+		rs2.close();
+		if (cnr != null)
+		    cnr.close();
+	    } catch (SQLException e) {
+		if (logger.isErrorEnabled()) {
+		    logger.error("Error al cerrar las sentencias SQL o la conexionR en tarea_conf_ini_est: "
+			    + e.getMessage());
+		}
+		cierrar();
+	    }
+	    Borratarea();
+	}
+    }
+
+    /**
+     * Borro una tarea de la BBDD remota.
+     * 
+     * @return
+     */
+    protected void Borratarea() {
+
+	logger.info("Borro tarea en la t02 con ID " + tarea.getIdtareaexec());
+
+	CallableStatement cs = null;
+	Connection cnr = null;
+
+	try {
+	    cnr = conectar();
+	    cs = cnr.prepareCall("{ call P025_D_DSTAREA(?,?) }");
+	    cs.setInt("V_IDTAREAEXEC", tarea.getIdtareaexec());
+	    cs.setInt("V_IDUSUARIOAUDIT", 0);
+	    cs.executeUpdate();
+
+	} catch (SQLException | NullPointerException e) {
+
+	    if (logger.isErrorEnabled()) {
+		logger.error("No se ha podido borrar la tarea en la BBDD remota.");
+		logger.error(e.getMessage());
+	    }
+
+	} finally {
+	    try {
+		cs.close();
+		cnr.close();
+	    } catch (SQLException | NullPointerException e) {
+		if (logger.isErrorEnabled()) {
+		    logger.error("Error en la sentencia." + e.getMessage());
+		}
+		cierrar();
+	    }
+
+	}
+
+    }
+
+    /**
+     * Inserto tareas en la BBDD local.
+     * 
+     * @return
+     */
+    protected boolean Insertarea() {
+
+	logger.info("Inserto tarea " + tarea.getIdtareaexec()
+		+ " en la BBDD local");
+
+	PreparedStatement ps = null;
+	Connection cnl = null;
+	try {
+	    cnl = IR.hiloescucha.connDB.conectal();
+	    ps = cnl.prepareStatement("INSERT INTO tarea(idtarea, codprog, numeresta,iddstarea,fcexec,valor,valor2,codtarea,dstarea)"
+		    + "VALUES (?,?,?,?,?,?,?,?,?)");
+	    ps.setInt(1, tarea.getIdtareaexec());
+	    ps.setString(2, tarea.getCodprog());
+	    ps.setString(3, tarea.getCodelecvalv());
+	    ps.setInt(4, tarea.getIddstarea());
+	    ps.setTimestamp(5, tarea.getFcexec());
+	    ps.setInt(6, tarea.getValor());
+	    ps.setString(7, Integer.toString(tarea.getValor2()));
+	    ps.setString(8, tarea.getCodtarea());
+	    ps.setString(9, tarea.getDstarea());
+	    ps.executeUpdate();
+	    return true;
+
+	} catch (SQLException | NullPointerException e) {
+
+	    if (logger.isErrorEnabled()) {
+		logger.error("No se ha podido insertar la tarea en la BBDD local.");
+		logger.error(e.getMessage());
+	    }
+	    return false;
+	} finally {
+	    try {
+		ps.close();
+		cnl.close();
+	    } catch (SQLException | NullPointerException e) {
+		if (logger.isErrorEnabled()) {
+		    logger.error("Error en la sentencia." + e.getMessage());
+		}
+		IR.hiloescucha.connDB.desconectal();
+	    }
+	}
+
+    }
+
+    /**
+     * Pongo el programador en activo o en desactivo
+     * 
+     * @return
+     */
+    public boolean act_rem_estado_programador(String id, boolean activar) {
+
+	logger.info("Marco el estado del programador " + id + " a " + activar);
+
+	int estado;
+	boolean ok = true;
+	
+	if (activar)
+	    estado = 1;
+	else
+	    estado = 0;
+
+	CallableStatement cs = null;
+	Connection cnr = null;
+
+	//Sólo si tengo que actuar
+	if ((IR.activo && !activar) || (!IR.activo && activar)) {
+	    try {
+		cnr = conectar();
+
+		cs = cnr.prepareCall("{ call P075_U_PROGRAMADOR_ESTADO(?,?) }");
+
+		cs.setString("V_CODPROG", id);
+		cs.setInt("V_ESTADO", estado);
+		cs.execute();
+
+		if (activar)
+		    logger.warn("Pongo el programador a activo (Está regando)");
+		else
+		    logger.warn("Pongo el programador a NO activo (No está regando)");
+		
+		
+	    } catch (SQLException | NullPointerException e) {
+		if (e instanceof SQLException && logger.isErrorEnabled()) {
+		    logger.error("No se ha podido actualizar el programa a en Marcha."
+			    + e.getMessage());
+		} else if (e instanceof NullPointerException
+			&& logger.isErrorEnabled()) {
+		    logger.error("Error de NullPointerException: "
+			    + e.getMessage());
+		    e.printStackTrace();
+		}
+		ok = false;
+		ga.insertarAlarmasExteriores(5, Integer.toString(estado));
+
+	    } finally {
+		try {
+		    if (cs != null)
+			cs.close();
+		    if (cnr != null)
+			cnr.close();
+		} catch (SQLException | NullPointerException e) {
+		    if (e instanceof SQLException && logger.isErrorEnabled()) {
+			logger.error("Error en la sentencia." + e.getMessage());
+		    } else if (e instanceof NullPointerException
+			    && logger.isErrorEnabled()) {
+			logger.error("Error de NullPointerException: "
+				+ e.getMessage());
+		    }
+		    cierrar();
+		}
+	    }
+	}
+
+	// Marco el flag de estado del programador
+	IR.estado = activar;
+
+	return ok;
+
+    }
+
+    /**
+     * Comprueba PROGRAMACIONES pendientes y si las hay las copia a la local y
+     * borra la tarea y demases de la paserela
+     */
+    protected void programa() {
+
+	CallableStatement cs = null, cs1 = null, cs2 = null, cs3 = null;
+	ResultSet rs = null, rs1 = null, rs2 = null, rs3 = null;
+	Connection cnr = null;
+	try {
+	    cnr = conectar();
+	    cs = cnr.prepareCall("{ call P104_S_PROGRAMA(?) }");
+	    cs.setString("V_CODPROG", Irrisoft.config.getIdrasp());
+
+	    rs = cs.executeQuery();
+	    while (rs.next()) {
+		int idprograma = rs.getInt("IDPROGRAMA");
+		prog.setIdprograma(idprograma);
+		String codprograma = rs.getString("CODPROGRAMA");
+		prog.setCodprograma(codprograma);
+		String dsprograma = rs.getString("DSPROGRAMA");
+		prog.setDsprograma(dsprograma);
+		Date fcinicio = rs.getDate("FCINICIO");
+		prog.setFcinicio(fcinicio);
+		Date fcfin = rs.getDate("FCFIN");
+		prog.setFcFin(fcfin);
+		String activo = rs.getString("ACTIVO");
+		prog.setActivo(activo);
+		String codprog = rs.getString("CODPROG");
+		prog.setCodprog(codprog);
+		String tipo = rs.getString("TIPO");
+		prog.setTipo(tipo);
+		int dial = rs.getInt("DIAL");
+		prog.setDial(dial);
+		int diam = rs.getInt("DIAM");
+		prog.setDiam(diam);
+		int diax = rs.getInt("DIAX");
+		prog.setDiax(diax);
+		int diaj = rs.getInt("DIAJ");
+		prog.setDiaj(diaj);
+		int diav = rs.getInt("DIAV");
+		prog.setDiav(diav);
+		int dias = rs.getInt("DIAS");
+		prog.setDias(dias);
+		int diad = rs.getInt("DIAD");
+		prog.setDiad(diad);
+		String modo = rs.getString("MODO");
+		prog.setModo(modo);
+		String modoini = rs.getString("MODOINI");
+		prog.setModoini(modoini);
+		int pbloque = rs.getInt("PBLOQUE");
+		prog.setPbloque(pbloque);
+		int cuota = rs.getInt("CUOTA");
+		prog.setCuota(cuota);
+		String leido = rs.getString("LEIDO");
+		prog.setLeido(leido);
+		String enmarcha = rs.getString("ENMARCHA");
+		prog.setEnmarcha(enmarcha);
+
+		if (logger.isInfoEnabled()) {
+		    logger.info("\nDescripcion: " + prog.getDsprograma());
+		    logger.info(prog.getCodprograma());
+		    logger.info(prog.getFcinicio());
+		}
+
+		// Compruebo que la programacion no existe en local !!
+		boolean existe = existeprog(idprograma);
+		// Si existe borro las filas de la susodicha progamacion en las
+		// tablas dias, horas, valvulas;
+		if (existe) {
+		    if (IR.progs.getprogramas().size() > 0) {
+			for (int i = 0; i < IR.progs.getprogramas().size(); i++) {
+			    if (idprograma == IR.progs.getprogramas().get(i)
+				    .getIdprograma()) {
+				IR.progs.getprogramas().get(i).setEditado(true);
+				break;
+			    }
+
+			}
+		    }
+		    // Borro días, horas, valvulas y tareasprogdia de la BBDD
+		    // local
+		    borrafilasprog(idprograma);
+		}
+		// Cojo el dia
+		cs1 = cnr.prepareCall("{ call P105_S_PROGDIAS(?)}");
+		cs1.setInt("V_IDPROGRAMA", idprograma);
+
+		rs1 = cs1.executeQuery();
+		while (rs1.next()) {
+		    Date fecha = rs1.getDate("FECHA");
+		    prog.setDia(fecha);
+
+		    if (logger.isInfoEnabled()) {
+			logger.info("Volcado guarda el dia " + fecha);
+		    }
+
+		    if (!insertadia()) {
+			if (logger.isErrorEnabled()) {
+			    logger.error("Error al insertar el dia en la local");
+			}
+		    } else {
+
+		    }
+
+		}
+
+		rs1.close();
+
+		// Cojo las horas y las guardo
+
+		cs2 = cnr.prepareCall("{ call P106_S_PROGHORAS(?)}");
+		cs2.setInt("V_IDPROGRAMA", idprograma);
+
+		rs2 = cs2.executeQuery();
+		while (rs2.next()) {
+		    Time hrinicio = rs2.getTime("HRINICIO");
+		    Time hrfin = rs2.getTime("HRFIN");
+
+		    prog.setHoraini(hrinicio.toString());
+		    prog.setHorafin(hrfin.toString());
+
+		    if (logger.isInfoEnabled()) {
+			logger.info("Volcado guarda las horas " + hrinicio
+				+ " " + hrfin);
+		    }
+		    if (!insertahoras()) {
+			if (logger.isErrorEnabled()) {
+			    logger.error("Error al insertar las horas en la local");
+			}
+		    } else {
+
+		    }
+
+		}
+		rs2.close();
+
+		// Cojo las valvulas y las guardo
+
+		cs3 = cnr.prepareCall("{ call P107_S_PROGVALV(?)}");
+		cs3.setInt("V_IDPROGRAMA", idprograma);
+
+		rs3 = cs3.executeQuery();
+		while (rs3.next()) {
+		    String numeresta = rs3.getString("NUMERESTA");
+		    int duracion = rs3.getInt("DURACION");
+		    int bloque = rs3.getInt("BLOQUE");
+		    valv.setCodelecvalv(numeresta);
+		    valv.setDuracion(duracion);
+		    valv.setBloque(bloque);
+
+		    if (logger.isInfoEnabled()) {
+			logger.info("Volcado guarda las valvulas " + numeresta);
+		    }
+		    if (!insertavalv()) {
+			if (logger.isErrorEnabled()) {
+			    logger.error("Error al insertar las horas en la local");
+			}
+		    }
+
+		}
+		rs3.close();
+
+		if (insertaprog()) {
+
+		    borraprog();
+		    Borratarea();
+
+		} else {
+
+		    if (logger.isErrorEnabled()) {
+
+			logger.error("Error al insertar la tarea de la bbdd remota a la local !!");
+
+		    }
+
+		}
+
+	    }
+	    rs.close();
+
+	} catch (SQLException | NullPointerException e) {
+
+	    if (e instanceof SQLException && logger.isErrorEnabled()) {
+		logger.error("Error de SQL: " + e.getMessage());
+	    } else if (e instanceof NullPointerException
+		    && logger.isErrorEnabled()) {
+		logger.error("Error de NullPointerException: " + e.getMessage());
+	    }
+
+	} finally {
+	    try {
+		if (cs != null)
+		    cs.close();
+		if (cnr != null)
+		    cnr.close();
+	    } catch (SQLException | NullPointerException e) {
+		if (e instanceof SQLException && logger.isErrorEnabled()) {
+		    logger.error("Error en la sentencia." + e.getMessage());
+		} else if (e instanceof NullPointerException
+			&& logger.isErrorEnabled()) {
+		    logger.error("Error de NullPointerException: "
+			    + e.getMessage());
+		}
+		cierrar();
+	    }
+	}
+
+    }
+
+    /**
+     * Para saber si la progamación que viene de GIS existe en la local o no
+     * 
+     * @return boolean
+     */
+    protected boolean existeprog(int idprog) {
+	boolean existe = false;
+	PreparedStatement p = null;
+	ResultSet s = null;
+	Connection cnl = null;
+	try {
+	    cnl = IR.hiloescucha.connDB.conectal();
+	    p = cnl.prepareStatement("SELECT IDPROGRAMA FROM programa where IDPROGRAMA = "
+		    + idprog);
+
+	    s = p.executeQuery();
+
+	    if (s.next())
+		existe = true;
+	    else
+		existe = false;
+
+	} catch (SQLException | NullPointerException e) {
+	    if (logger.isErrorEnabled()) {
+		logger.error("No se ha podido actualizar la programacion en la BBDD local.");
+		logger.error(e.getMessage());
+	    }
+	    return false;
+	} finally {
+	    try {
+		p.close();
+		s.close();
+		cnl.close();
+	    } catch (SQLException | NullPointerException e) {
+		if (logger.isErrorEnabled()) {
+		    logger.error("Error en la sentencia." + e.getMessage());
+		}
+		IR.hiloescucha.connDB.desconectal();
+	    }
+	}
+
+	return existe;
+    }
+
+    /**
+     * Borro las filas de la programación correspondiente en horas,dias y
+     * valvulas
+     * 
+     * @return boolean
+     */
+    protected boolean borrafilasprog(int idprog) {
+
+	boolean ok = false;
+	Statement p = null, p1 = null, p2 = null, p3 = null;
+	// ResultSet s = null , s1 = null, s2 = null;
+	Connection cnl = null;
+	try {
+	    cnl = IR.hiloescucha.connDB.conectal();
+	    p = cnl.createStatement();
+	    p.executeUpdate("DELETE FROM dias where IDPROGRAMA = " + idprog);
+
+	    p1 = cnl.createStatement();
+	    p1.executeUpdate("DELETE FROM horas where IDPROGRAMA = " + idprog);
+
+	    p2 = cnl.createStatement();
+	    p2.executeUpdate("DELETE FROM valvulas where IDPROGRAMA = "
+		    + idprog);
+	    p3 = cnl.createStatement();
+	    p3.executeUpdate("DELETE FROM tareasprogdia where idprog= "
+		    + idprog);
+
+	} catch (SQLException | NullPointerException e) {
+	    ok = false;
+	    if (logger.isErrorEnabled()) {
+		logger.error("No se ha podido actualizar la programacion en la BBDD local.");
+		logger.error(e.getMessage());
+		logger.error(e.getStackTrace());
+	    }
+	    return ok;
+	} finally {
+	    try {
+		p.close();
+		p1.close();
+		p2.close();
+		cnl.close();
+		ok = true;
+	    } catch (SQLException | NullPointerException e) {
+		if (logger.isErrorEnabled()) {
+		    logger.error("Error en la sentencia." + e.getMessage());
+		}
+		IR.hiloescucha.connDB.desconectal();
+	    }
+	}
+
+	return ok;
+    }
+
+    /**
+     * Inserto programas en la BBDD local.
+     * 
+     * @return
+     */
+    protected boolean insertaprog() {
+	if (logger.isInfoEnabled()) {
+	    logger.info("Aki inserto programacion en la local");
+	}
+
+	PreparedStatement ps = null;
+	Connection cnl = null;
+
+	try {
+	    cnl = IR.hiloescucha.connDB.conectal();
+	    ps = cnl.prepareStatement("INSERT INTO `programa`(`IDPROGRAMA`, `CODPROGRAMA`, `DSPROGRAMA`, `FCINICIO`, `FCFIN`, `ACTIVO`, `CODPROG`, "
+		    + "`TIPO`, `DIAL`, `DIAM`, `DIAX`, `DIAJ`, `DIAV`, `DIAS`, `DIAD`, `MODO`, `MODOINI`, `PBLOQUE`, `CUOTA`, `LEIDO`, `ENMARCHA`)"
+		    + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+		    + "ON DUPLICATE KEY UPDATE IDPROGRAMA=VALUES(IDPROGRAMA), CODPROGRAMA=VALUES(CODPROGRAMA), DSPROGRAMA=VALUES(DSPROGRAMA), FCINICIO=VALUES(FCINICIO), "
+		    + "FCFIN=VALUES(FCFIN), ACTIVO=VALUES(ACTIVO), CODPROG=VALUES(CODPROG), TIPO=VALUES(TIPO) , DIAL=VALUES(DIAL) , DIAM=VALUES(DIAM) , DIAX=VALUES(DIAX), "
+		    + "DIAJ=VALUES(DIAJ), DIAV=VALUES(DIAV), DIAS=VALUES(DIAS), DIAD=VALUES(DIAD) , MODO=VALUES(MODO) , MODOINI=VALUES(MODOINI) , PBLOQUE=VALUES(PBLOQUE), "
+		    + "CUOTA=VALUES(CUOTA), LEIDO=VALUES(LEIDO), ENMARCHA=VALUES(ENMARCHA)");
+
+	    ps.setInt(1, prog.getIdprograma());
+	    ps.setString(2, prog.getCodprograma());
+	    ps.setString(3, prog.getDsprograma());
+	    ps.setDate(4, prog.getFcinicio());
+	    ps.setDate(5, prog.getFcFin());
+	    ps.setString(6, prog.getActivo());
+	    ps.setString(7, prog.getCodprog());
+	    ps.setString(8, prog.getTipo());
+	    ps.setInt(9, prog.getDial());
+	    ps.setInt(10, prog.getDiam());
+	    ps.setInt(11, prog.getDiax());
+	    ps.setInt(12, prog.getDiaj());
+	    ps.setInt(13, prog.getDiav());
+	    ps.setInt(14, prog.getDias());
+	    ps.setInt(15, prog.getDiad());
+	    ps.setString(16, prog.getModo());
+	    ps.setString(17, prog.getModoini());
+	    ps.setInt(18, prog.getPbloque());
+	    ps.setInt(19, prog.getCuota());
+	    ps.setString(20, prog.getLeido());
+	    ps.setString(21, prog.getEnmarcha());
+	    ps.executeUpdate();
+
+	    return true;
+	} catch (SQLException | NullPointerException e) {
+	    if (logger.isErrorEnabled()) {
+		logger.error("No se ha podido actualizar la programacion en la BBDD local.");
+		logger.error(e.getMessage());
+	    }
+	    return false;
+	} finally {
+	    try {
+		ps.close();
+		cnl.close();
+	    } catch (SQLException | NullPointerException e) {
+		if (logger.isErrorEnabled()) {
+		    logger.error("Error en la sentencia." + e.getMessage());
+		}
+		IR.hiloescucha.connDB.desconectal();
+	    }
+	}
+
+    }
+
+    /**
+     * Borro programa de la t10_programas de la BBDD Remota (GIS).
+     * 
+     * @return
+     */
+    protected boolean borraprog() {
+
+	CallableStatement cs = null;
+	Connection cnr = null;
+
+	try {
+	    cnr = conectar();
+	    cs = cnr.prepareCall("{ call P108_U_PROGRAMA(?,?,?)}");
+	    cs.setInt("V_IDPROGRAMA", prog.getIdprograma());
+	    cs.setString("V_LEIDO", "S");
+	    cs.setString("V_ENMARCHA", "N");
+	    cs.executeUpdate();
+	    if (logger.isInfoEnabled()) {
+		logger.info("Programa ya leido y borrado de la pasarela");
+	    }
+	    return true;
+	} catch (SQLException | NullPointerException e) {
+	    if (logger.isErrorEnabled()) {
+		logger.error("No se ha podido borrar el programa en la BBDD remota.");
+		logger.error(e.getMessage());
+	    }
+	    return false;
+	} finally {
+	    try {
+		cs.close();
+		cnr.close();
+	    } catch (SQLException | NullPointerException e) {
+		if (logger.isErrorEnabled()) {
+		    logger.error("Error en la sentencia." + e.getMessage());
+		}
+		cierrar();
+	    }
+	}
+    }
+
+    /**
+     * Inserto dias en la BBDD local.
+     * 
+     * @return
+     */
+    protected boolean insertadia() {
+	if (logger.isInfoEnabled()) {
+	    logger.info("Aki inserto dias en la local");
+	}
+
+	PreparedStatement ps = null;
+	Connection cnl = null;
+	try {
+	    cnl = IR.hiloescucha.connDB.conectal();
+	    ps = cnl.prepareStatement("INSERT INTO dias (codprog,idprograma,fecha) VALUES(?,?,?)");
+	    ps.setString(1, prog.getCodprog());
+	    ps.setInt(2, prog.getIdprograma());
+	    ps.setDate(3, prog.getDia());
+	    ps.executeUpdate();
+	    return true;
+	} catch (SQLException | NullPointerException e) {
+
+	    if (logger.isErrorEnabled()) {
+		logger.error("No se ha podido actualizar el dia en la BBDD local.");
+		logger.error(e.getMessage());
+	    }
+	    return false;
+	} finally {
+	    try {
+		ps.close();
+		cnl.close();
+	    } catch (SQLException | NullPointerException e) {
+		if (logger.isErrorEnabled()) {
+		    logger.error("Error en la sentencia." + e.getMessage());
+		}
+		IR.hiloescucha.connDB.desconectal();
+	    }
+	}
+
+    }
+
+    /**
+     * Inserto horas en la BBDD local.
+     * 
+     * @return
+     */
+    protected boolean insertahoras() {
+	if (logger.isInfoEnabled()) {
+	    logger.info("Aki inserto horas en la local");
+	}
+
+	PreparedStatement ps = null;
+	Connection cnl = null;
+	try {
+	    cnl = IR.hiloescucha.connDB.conectal();
+	    ps = cnl.prepareStatement("INSERT INTO horas (codprog,idprograma, hrinicio,hrfin) VALUES (?,?,?,?) ");
+	    ps.setString(1, prog.getCodprog());
+	    ps.setInt(2, prog.getIdprograma());
+	    ps.setString(3, prog.getHoraini());
+	    ps.setString(4, prog.getHorafin());
+	    ps.executeUpdate();
+	    return true;
+	} catch (SQLException | NullPointerException e) {
+	    if (e instanceof SQLException && logger.isErrorEnabled()) {
+		logger.error("No se ha podido actualizar las horas en la BBDD local: "
+			+ e.getMessage());
+	    } else if (e instanceof NullPointerException
+		    && logger.isErrorEnabled()) {
+		logger.error("Error de NullPointerException: " + e.getMessage());
+	    }
+	    return false;
+	} finally {
+	    try {
+		ps.close();
+		cnl.close();
+	    } catch (SQLException | NullPointerException e) {
+		if (e instanceof SQLException && logger.isErrorEnabled()) {
+		    logger.error("Error en la sentencia." + e.getMessage());
+		}
+		IR.hiloescucha.connDB.desconectal();
+	    }
+	}
+
+    }
+
+    /**
+     * Inserto valvulas en la BBDD local.
+     * 
+     * @return
+     */
+    protected boolean insertavalv() {
+	if (logger.isInfoEnabled()) {
+	    logger.info("Aki inserto valvulas en la local");
+	}
+
+	PreparedStatement ps = null;
+	Connection cnl = null;
+	try {
+	    cnl = IR.hiloescucha.connDB.conectal();
+	    ps = cnl.prepareStatement("INSERT INTO valvulas (codprog,idprograma,codelecvalv,duracion,bloque) VALUES (?,?,?,?,?)");
+	    ps.setString(1, prog.getCodprog());
+	    ps.setInt(2, prog.getIdprograma());
+	    ps.setString(3, valv.getCodelecvalv());
+	    ps.setInt(4, valv.getDuracion());
+	    ps.setInt(5, valv.getBloque());
+	    ps.executeUpdate();
+
+	    return true;
+	} catch (SQLException | NullPointerException e) {
+	    if (e instanceof SQLException && logger.isErrorEnabled()) {
+		logger.error("No se ha podido actualizar valvulas en la BBDD local: "
+			+ e.getMessage());
+	    } else if (e instanceof NullPointerException
+		    && logger.isErrorEnabled()) {
+		logger.error("Error de NullPointerException: " + e.getMessage());
+	    }
+	    return false;
+	} finally {
+	    try {
+		ps.close();
+		cnl.close();
+	    } catch (SQLException | NullPointerException e) {
+		if (e instanceof SQLException && logger.isErrorEnabled()) {
+		    logger.error("Error en la sentencia." + e.getMessage());
+		} else if (e instanceof NullPointerException
+			&& logger.isErrorEnabled()) {
+		    logger.error("Error de NullPointerException: "
+			    + e.getMessage());
+		}
+		IR.hiloescucha.connDB.desconectal();
+	    }
+	}
+
+    }
+
+    /**
+     * Pongo el programa en Marcha en Remoto Estado S en Marcha, estado N
+     * Parado.
+     * 
+     * @param idprograma
+     * @param enMarcha
+     * @param codprog
+     * @return
+     */
+    public boolean enMarchaR(int idprograma, boolean enMarcha, String codprog) {
+
+	CallableStatement cs = null;
+	String regando;
+	int usuarioaudit = 56;
+	boolean programaEnMarcha = true;
+	Connection cnr = null;
+
+	// Si enMarcha es true, regando = S, si enMarcha es false, regando = N.
+	if (enMarcha)
+	    regando = "S";
+	else
+	    regando = "N";
+
+	try {
+	    cnr = conectar();
+
+	    cs = cnr.prepareCall("{ call P093_U_PROGRAMA(?,?,?,?) }");
+
+	    cs.setInt("V_IDPROGRAMA", idprograma);
+	    cs.setString("V_CODPROG", codprog);
+	    cs.setString("V_ENMARCHA", regando);
+	    cs.setInt("V_IDUSUARIOAUDIT", usuarioaudit);
+	    cs.execute();
+
+	    if (enMarcha)
+		logger.warn("Pongo el programa " + idprograma
+			+ " a S (Esta en marcha)");
+	    else
+		logger.warn("Pongo el programa " + idprograma
+			+ " a N (No esta en marcha)");
+
+	} catch (SQLException | NullPointerException e) {
+	    if (e instanceof SQLException && logger.isErrorEnabled()) {
+		logger.error("No se ha podido actualizar el programa a en Marcha."
+			+ e.getMessage());
+	    } else if (e instanceof NullPointerException
+		    && logger.isErrorEnabled()) {
+		logger.error("Error de NullPointerException: " + e.getMessage());
+		e.printStackTrace();
+	    }
+	    // Variable de si esta regando + el numero de programador.
+	    ga.insertarAlarmasExteriores(4,
+		    regando + "," + Integer.toString(idprograma));
+
+	    // ga.insertarAlarma(4, regando + "," +
+	    // Integer.toString(idprograma));
+	    programaEnMarcha = false;
+
+	} finally {
+	    try {
+		if (cs != null)
+		    cs.close();
+		if (cnr != null)
+		    cnr.close();
+	    } catch (SQLException | NullPointerException e) {
+		if (e instanceof SQLException && logger.isErrorEnabled()) {
+		    logger.error("Error en la sentencia." + e.getMessage());
+		} else if (e instanceof NullPointerException
+			&& logger.isErrorEnabled()) {
+		    logger.error("Error de NullPointerException: "
+			    + e.getMessage());
+		}
+		cierrar();
+	    }
+	}
+	return programaEnMarcha;
+
+    }
+
+    // METODOS RELACIONADOS CON CONEXIONES A BBDD, ABRIR Y CERRAR
+    //
+
+    /**
+     * Creo el Pool de conexiones a GIS
+     */
+    private void crearPoolConexionRemota() {
+
+	if (config == null) {
+	    config = new Conf();
+	    leerconf(config); // Cargo la configuracion del archivo
+			      // Volcado.properties
+	}
+
+	BasicDataSource basicDataSource = new BasicDataSource();
+
+	basicDataSource.setDriverClassName("com.mysql.jdbc.Driver");
+	basicDataSource.setUsername(config.getUserr());
+	basicDataSource.setPassword(config.getPassr());
+	String urlremota = "jdbc:mysql://" + config.getHostr() + ":"
+		+ config.getPuertor() + "/" + config.getDbr()
+		+ "?autoReconnect=true";
+	basicDataSource.setUrl(urlremota);
+	basicDataSource.setMinIdle(1);
+	basicDataSource.setMaxIdle(100);
+	basicDataSource.setMaxTotal(100);
+	basicDataSource.setValidationQueryTimeout(6);
+
+	datasource = basicDataSource;
+    }
+
+    /**
+     * Conexion con la BBDD Remota.
+     * 
+     * @return
+     */
+
+    public Connection conectar() {
+
+	if (config == null) {
+	    config = new Conf();
+	    leerconf(config); // Cargo la configuracion del archivo
+			      // Volcado.properties
+	}
+
+	try {
+	    if (isConectador() == false) {
+
+		conR = datasource.getConnection();
+
+		if (conR.isValid(6)) {
+		    IR.lblstatusr.setForeground(new Color(0, 128, 0));
+		    IR.lblstatusr.setText("Conectado");
+		    logger.warn("CONECTADO REMOTA VOLC");
+		    setConectador(true);
+
+		}
+	    } else {
+		conR = datasource.getConnection();
+		conR.isValid(6);
+	    }
+
+	} catch (SQLException e) {
+	    if (logger.isErrorEnabled()) {
+		logger.error("No hay conexion con GIS, error al conectar: "
+			+ e.getMessage());
+	    }
+
+	    IR.lblstatusr.setForeground(Color.RED);
+	    IR.lblstatusr.setText("Desconectado");
+	    setConectador(false);
+	    conR = null;
+
+	}
+
+	return conR;
+
+    }
+
+    /**
+     * Cierro la conexion con la BBDD Remota y lo pongo a Desconectado.
+     */
+
+    public void cierrar() {
+	IR.lblstatusr.setForeground(Color.RED);
+	IR.lblstatusr.setText("Desconectado");
+	setConectador(false);
+
+    }
+
+    // METODO RELACIONADO CON IP
+    //
+    /**
+     * Calculo la IP del programador en la interfaz ppp0
+     */
+    public void calculaip() {
+
+	try {
+	    Enumeration<NetworkInterface> n = NetworkInterface
+		    .getNetworkInterfaces();
+
+	    for (; n.hasMoreElements();) {
+		NetworkInterface e = n.nextElement();
+
+		if (logger.isInfoEnabled()) {
+		    logger.info(e.getDisplayName());
+		}
+
+		if (e.getDisplayName().contentEquals("ppp0")) {
+		    Enumeration<InetAddress> a = e.getInetAddresses();
+		    for (; a.hasMoreElements();) {
+			InetAddress addr = a.nextElement();
+			if (ip != " ") {
+			    if (addr.getHostAddress().contentEquals(ip)) {
+			    } else {
+				// Para que sólo escriba las IPStack4
+				if (!addr.getHostAddress().contains(":")) {
+				    ip = addr.getHostAddress();
+				    escribeip();
+				}
+			    }
+			}
+
+			else {
+			    // Para que sólo escriba las IPStack4
+			    if (!addr.getHostAddress().contains(":")) {
+				ip = addr.getHostAddress();
+				escribeip();
+			    }
+			}
+		    }
+		}
+	    }
+	} catch (SocketException | NullPointerException e1) {
+	    if (logger.isErrorEnabled()) {
+		logger.error(e1.getMessage());
+	    }
+	}
+	System.out.println("CalculaIP(): " + ip);
+    }
+
+    /**
+     * Escribo la IP del programador en la BBDD Remota (GIS).
+     */
+    protected void escribeip() {
+
+	CallableStatement cs = null;
+	Connection cnr = null;
+	try {
+	    cnr = conectar();
+	    cs = cnr.prepareCall("{ call P061_U_PROGRAMADOR(?,?) }");
+
+	    cs.setString("V_CODPROG", Irrisoft.config.getIdrasp());
+	    cs.setString("V_IPPROG", ip);
+	    cs.execute();
+
+	    logger.info("Se va a escribir la nueva ip en GIS: " + ip);
+
+	} catch (SQLException | NullPointerException e) {
+	    if (e instanceof SQLException && logger.isErrorEnabled()) {
+		logger.error("Error en la sentencia de escribe IP: "
+			+ e.getMessage());
+	    } else if (e instanceof NullPointerException
+		    && logger.isErrorEnabled()) {
+		logger.error("Error de NullPointerException en escribe IP: "
+			+ e.getMessage());
+	    }
+	    ip = "";
+	} finally {
+	    try {
+		if (cs != null)
+		    cs.close();
+		if (cnr != null)
+		    cnr.close();
+	    } catch (SQLException | NullPointerException e) {
+		if (e instanceof SQLException && logger.isErrorEnabled()) {
+		    logger.error("Error en la sentencia close de escribe IP:"
+			    + e.getMessage());
+		} else if (e instanceof NullPointerException
+			&& logger.isErrorEnabled()) {
+		    logger.error("Error de NullPointerException en close de escribe IP: "
+			    + e.getMessage());
+		}
+		cierrar();
+	    }
+	}
+    }
+
+    // METODOS RELACIONADOS CON CONFIGURACION INICIAL
+    //
+    /**
+     * Leo la configuracion del archivo Volvado.properties que contiene los
+     * datos de configuracion de la BBDD local y la BBDD Remota.
+     * 
+     * @param config
+     */
+    public void leerconf(Conf config) {
+
+	Properties propiedades = new Properties() {
+
+	    private static final long serialVersionUID = 1L;
+
+	    @Override
+	    public synchronized Enumeration<Object> keys() {
+		return Collections.enumeration(new TreeSet<Object>(super
+			.keySet()));
+	    }
+	};
+	InputStream lecturaVolcado = null;
+	BasicTextEncryptor text = new BasicTextEncryptor();
+	String hostr, puertor, dbr, usuarior, passr, flag, hostl, puertol, dbl, usuariol, passl, flagc, tiempo = null;
+
+	try {
+	    lecturaVolcado = new FileInputStream("Volcado.properties");
+	    propiedades.load(lecturaVolcado);
+
+	    // Coloco la contraseña de
+	    text.setPassword(IrrisoftConstantes.PASSWORD);
+
+	    if (propiedades.getProperty("FLAG").equals("si")) {
+
+		flag = text.encrypt(propiedades.getProperty("FLAG"));
+		propiedades.setProperty("FLAG", flag);
+
+		flagc = text.encrypt(propiedades
+			.getProperty("Remota.FLAG_CAMBIOS"));
+		propiedades.setProperty("Remota.FLAG_CAMBIOS", flagc);
+
+		config.setHostr(propiedades
+			.getProperty("Remota.Conexion.HOSTR"));
+		hostr = text.encrypt(propiedades
+			.getProperty("Remota.Conexion.HOSTR"));
+		propiedades.setProperty("Remota.Conexion.HOSTR", hostr);
+
+		config.setPuertor(Integer.parseInt(propiedades
+			.getProperty("Remota.Conexion.PUERTOR")));
+		puertor = text.encrypt(propiedades
+			.getProperty("Remota.Conexion.PUERTOR"));
+		propiedades.setProperty("Remota.Conexion.PUERTOR", puertor);
+
+		config.setDbr(propiedades.getProperty("Remota.DBR"));
+		dbr = text.encrypt(propiedades.getProperty("Remota.DBR"));
+		propiedades.setProperty("Remota.DBR", dbr);
+
+		config.setUserr(propiedades
+			.getProperty("Remota.Login.USUARIOR"));
+		usuarior = text.encrypt(propiedades
+			.getProperty("Remota.Login.USUARIOR"));
+		propiedades.setProperty("Remota.Login.USUARIOR", usuarior);
+
+		config.setPassr(propiedades.getProperty("Remota.Login.PASSR"));
+		passr = text.encrypt(propiedades
+			.getProperty("Remota.Login.PASSR"));
+		propiedades.setProperty("Remota.Login.PASSR", passr);
+
+		config.setHostl(propiedades.getProperty("Local.Conexion.HOSTL"));
+		hostl = text.encrypt(propiedades
+			.getProperty("Local.Conexion.HOSTL"));
+		propiedades.setProperty("Local.Conexion.HOSTL", hostl);
+
+		config.setPuertol(Integer.parseInt(propiedades
+			.getProperty("Local.Conexion.PUERTOL")));
+		puertol = text.encrypt(propiedades
+			.getProperty("Local.Conexion.PUERTOL"));
+		propiedades.setProperty("Local.Conexion.PUERTOL", puertol);
+
+		config.setDbl(propiedades.getProperty("Local.DBL"));
+		dbl = text.encrypt(propiedades.getProperty("Local.DBL"));
+		propiedades.setProperty("Local.DBL", dbl);
+
+		config.setUsuariol(propiedades
+			.getProperty("Local.Login.USUARIOL"));
+		usuariol = text.encrypt(propiedades
+			.getProperty("Local.Login.USUARIOL"));
+		propiedades.setProperty("Local.Login.USUARIOL", usuariol);
+
+		config.setPassl(propiedades.getProperty("Local.Login.PASSL"));
+		passl = text.encrypt(propiedades
+			.getProperty("Local.Login.PASSL"));
+		propiedades.setProperty("Local.Login.PASSL", passl);
+
+		config.setTiempo(Integer.parseInt(propiedades
+			.getProperty("TIEMPO")));
+		tiempo = text.encrypt(propiedades.getProperty("TIEMPO"));
+		propiedades.setProperty("TIEMPO", tiempo);
+
+		// Actualizo el fichero de salida
+		OutputStream os = new FileOutputStream("Volcado.properties");
+		propiedades.store(os, null);
+
+	    }
+	    if (propiedades.getProperty("Remota.FLAG_CAMBIOS").equals("si")) {
+
+		flagc = text.encrypt(propiedades
+			.getProperty("Remota.FLAG_CAMBIOS"));
+		propiedades.setProperty("Remota.FLAG_CAMBIOS", flagc);
+
+		// HOSTR
+		if (propiedades.getProperty("Remota.Conexion.HOSTR").length() < 22) {
+		    hostr = propiedades.getProperty("Remota.Conexion.HOSTR");
+		    propiedades.setProperty("Remota.Conexion.HOSTR", hostr);
+		} else {
+		    hostr = text.decrypt(propiedades
+			    .getProperty("Remota.Conexion.HOSTR"));
+		    propiedades.setProperty("Remota.Conexion.HOSTR", hostr);
+		}
+		config.setHostr(hostr);
+		hostr = text.encrypt(propiedades
+			.getProperty("Remota.Conexion.HOSTR"));
+		propiedades.setProperty("Remota.Conexion.HOSTR", hostr);
+
+		// PUERTOR
+		if (propiedades.getProperty("Remota.Conexion.PUERTOR").length() < 22) {
+		    puertor = propiedades
+			    .getProperty("Remota.Conexion.PUERTOR");
+		    propiedades.setProperty("Remota.Conexion.PUERTOR", puertor);
+		} else {
+		    puertor = text.decrypt(propiedades
+			    .getProperty("Remota.Conexion.PUERTOR"));
+		    propiedades.setProperty("Remota.Conexion.PUERTOR", puertor);
+		}
+		config.setPuertor(Integer.parseInt(puertor));
+		puertor = text.encrypt(propiedades
+			.getProperty("Remota.Conexion.PUERTOR"));
+		propiedades.setProperty("Remota.Conexion.PUERTOR", puertor);
+
+		// DBR
+		if (propiedades.getProperty("Remota.DBR").length() < 22) {
+		    dbr = propiedades.getProperty("Remota.DBR");
+		    propiedades.setProperty("Remota.DBR", dbr);
+		} else {
+		    dbr = text.decrypt(propiedades.getProperty("Remota.DBR"));
+		    propiedades.setProperty("Remota.DBR", dbr);
+
+		}
+		config.setDbr(dbr);
+		dbr = text.encrypt(propiedades.getProperty("Remota.DBR"));
+		propiedades.setProperty("Remota.DBR", dbr);
+
+		// USUARIOR
+		if (propiedades.getProperty("Remota.Login.USUARIOR").length() < 22) {
+		    usuarior = propiedades.getProperty("Remota.Login.USUARIOR");
+		    propiedades.setProperty("", usuarior);
+		} else {
+		    usuarior = text.decrypt(propiedades
+			    .getProperty("Remota.Login.USUARIOR"));
+		    propiedades.setProperty("Remota.Login.USUARIOR", usuarior);
+		}
+		config.setUserr(usuarior);
+		usuarior = text.encrypt(propiedades
+			.getProperty("Remota.Login.USUARIOR"));
+		propiedades.setProperty("Remota.Login.USUARIOR", usuarior);
+
+		// PASSR
+		if (propiedades.getProperty("Remota.Login.PASSR").length() < 22) {
+		    passr = propiedades.getProperty("Remota.Login.PASSR");
+		    propiedades.setProperty("Remota.Login.PASSR", passr);
+		} else {
+		    passr = text.decrypt(propiedades
+			    .getProperty("Remota.Login.PASSR"));
+		    propiedades.setProperty("Remota.Login.PASSR", passr);
+		}
+		config.setPassr(passr);
+		passr = text.encrypt(propiedades
+			.getProperty("Remota.Login.PASSR"));
+		propiedades.setProperty("Remota.Login.PASSR", passr);
+
+		// HOSTL
+		if (propiedades.getProperty("Local.Conexion.HOSTL").length() < 22) {
+		    hostl = propiedades.getProperty("Local.Conexion.HOSTL");
+		    propiedades.setProperty("Local.Conexion.HOSTL", hostl);
+		} else {
+		    hostl = text.decrypt(propiedades
+			    .getProperty("Local.Conexion.HOSTL"));
+		    propiedades.setProperty("Local.Conexion.HOSTL", hostl);
+		}
+		config.setHostl(hostl);
+		hostl = text.encrypt(propiedades
+			.getProperty("Local.Conexion.HOSTL"));
+		propiedades.setProperty("Local.Conexion.HOSTL", hostl);
+
+		// PUERTOL
+		if (propiedades.getProperty("Local.Conexion.PUERTOL").length() < 22) {
+		    puertol = propiedades.getProperty("Local.Conexion.PUERTOL");
+		    propiedades.setProperty("Local.Conexion.PUERTOL", puertol);
+		} else {
+		    puertol = text.decrypt(propiedades
+			    .getProperty("Local.Conexion.PUERTOL"));
+		    propiedades.setProperty("Local.Conexion.PUERTOL", puertol);
+		}
+		config.setPuertol(Integer.parseInt(puertol));
+		puertol = text.encrypt(propiedades
+			.getProperty("Local.Conexion.PUERTOL"));
+		propiedades.setProperty("Local.Conexion.PUERTOL", puertol);
+
+		// DBL
+		if (propiedades.getProperty("Local.DBL").length() < 22) {
+		    dbl = propiedades.getProperty("Local.DBL");
+		    propiedades.setProperty("Local.DBL", dbl);
+		} else {
+		    dbl = text.decrypt(propiedades.getProperty("Local.DBL"));
+		    propiedades.setProperty("Local.DBL", dbl);
+		}
+		config.setDbl(dbl);
+		dbl = text.encrypt(propiedades.getProperty("Local.DBL"));
+		propiedades.setProperty("Local.DBL", dbl);
+
+		// USUARIOL
+		if (propiedades.getProperty("Local.Login.USUARIOL").length() < 22) {
+		    usuariol = propiedades.getProperty("Local.Login.USUARIOL");
+		    propiedades.setProperty("Local.Login.USUARIOL", usuariol);
+
+		} else {
+		    usuariol = text.decrypt(propiedades
+			    .getProperty("Local.Login.USUARIOL"));
+		    propiedades.setProperty("Local.Login.USUARIOL", usuariol);
+		}
+		config.setUsuariol(usuariol);
+		usuariol = text.encrypt(propiedades
+			.getProperty("Local.Login.USUARIOL"));
+		propiedades.setProperty("Local.Login.USUARIOL", usuariol);
+
+		// PASSL
+		if (propiedades.getProperty("Local.Login.PASSL").length() < 22) {
+		    passl = propiedades.getProperty("Local.Login.PASSL");
+		    propiedades.setProperty("Local.Login.PASSL", passl);
+
+		} else {
+		    passl = text.decrypt(propiedades
+			    .getProperty("Local.Login.PASSL"));
+		    propiedades.setProperty("Local.Login.PASSL", passl);
+		}
+		config.setPassl(passl);
+		passl = text.encrypt(propiedades
+			.getProperty("Local.Login.PASSL"));
+		propiedades.setProperty("Local.Login.PASSL", passl);
+
+		// TIEMPO
+		if (propiedades.getProperty("TIEMPO").length() < 22) {
+		    tiempo = propiedades.getProperty("TIEMPO");
+		    propiedades.setProperty("TIEMPO", tiempo);
+		} else {
+		    tiempo = text.decrypt(propiedades.getProperty("TIEMPO"));
+		    propiedades.setProperty("TIEMPO", tiempo);
+		}
+		config.setTiempo(Integer.parseInt(tiempo));
+		tiempo = text.encrypt(propiedades.getProperty("TIEMPO"));
+		propiedades.setProperty("TIEMPO", tiempo);
+
+		// Actualizo el fichero de salida
+		OutputStream os = new FileOutputStream("Volcado.properties");
+		propiedades.store(os, null);
+
+	    } else {
+
+		hostr = text.decrypt(propiedades
+			.getProperty("Remota.Conexion.HOSTR"));
+		config.setHostr(hostr);
+
+		puertor = text.decrypt(propiedades
+			.getProperty("Remota.Conexion.PUERTOR"));
+		config.setPuertor(Integer.parseInt(puertor));
+
+		dbr = text.decrypt(propiedades.getProperty("Remota.DBR"));
+		config.setDbr(dbr);
+
+		usuarior = text.decrypt(propiedades
+			.getProperty("Remota.Login.USUARIOR"));
+		config.setUserr(usuarior);
+
+		passr = text.decrypt(propiedades
+			.getProperty("Remota.Login.PASSR"));
+		config.setPassr(passr);
+
+		hostl = text.decrypt(propiedades
+			.getProperty("Local.Conexion.HOSTL"));
+		config.setHostl(hostl);
+
+		puertol = text.decrypt(propiedades
+			.getProperty("Local.Conexion.PUERTOL"));
+		config.setPuertol(Integer.parseInt(puertol));
+
+		dbl = text.decrypt(propiedades.getProperty("Local.DBL"));
+		config.setDbl(dbl);
+
+		usuariol = text.decrypt(propiedades
+			.getProperty("Local.Login.USUARIOL"));
+		config.setUsuariol(usuariol);
+
+		passl = text.decrypt(propiedades
+			.getProperty("Local.Login.PASSL"));
+		config.setPassl(passl);
+
+		tiempo = text.decrypt(propiedades.getProperty("TIEMPO"));
+		config.setTiempo(Integer.parseInt(tiempo));
+
+	    }
+
+	} catch (FileNotFoundException | NullPointerException ex) {
+	    ex.getMessage();
+	    if (logger.isErrorEnabled()) {
+		logger.error("No existe el fichero de configuración !! \n Se sale !");
+		logger.error(ex.getMessage());
+	    }
+
+	} catch (IOException ex1) {
+
+	    if (logger.isErrorEnabled()) {
+		logger.error("No se ha podido leer el archivo !! \n Se sale !");
+		logger.error(ex1.getMessage());
+	    }
+	}
+	try {
+	    lecturaVolcado.close();
+
+	} catch (Exception ex2) {
+	    if (logger.isErrorEnabled()) {
+		logger.error("No se ha podido cerrar la lectura de archivo !!");
+		logger.error(ex2.getMessage());
+	    }
+	}
+
+    }
+
+    public void guardarconf_tiempo() {
+	// METODO REALIZADO PARA ARCHIVO VOLCADO.PROPERTIES
+	Properties propiedades = new Properties() {
+
+	    private static final long serialVersionUID = 1L;
+
+	    @Override
+	    public synchronized Enumeration<Object> keys() {
+		return Collections.enumeration(new TreeSet<Object>(super
+			.keySet()));
+	    }
+	};
+	InputStream entrada = null;
+	BasicTextEncryptor text = new BasicTextEncryptor();
+	String hostr, hostl, puertor, puertol, dbr, dbl, passr, passl, usuarior, usuariol, tiempo, flag, flagcambios;
+
+	try {
+
+	    entrada = new FileInputStream("Volcado.properties");
+	    propiedades.load(entrada);
+
+	} catch (IOException e) {
+	    e.getMessage();
+	}
+
+	try {
+	    text.setPassword(IrrisoftConstantes.PASSWORD);
+	    FileOutputStream confGuardar = new FileOutputStream(
+		    "Volcado.properties");
+
+	    // Flags
+	    flag = text.decrypt(propiedades.getProperty("FLAG"));
+	    propiedades.setProperty("FLAG", flag);
+	    flagcambios = text.decrypt(propiedades
+		    .getProperty("Remota.FLAG_CAMBIOS"));
+	    propiedades.setProperty("Remota.FLAG_CAMBIOS", flag);
+
+	    // / BBDD local
+	    // Variable de HOSTL
+	    hostl = text.decrypt(propiedades
+		    .getProperty("Local.Conexion.HOSTL"));
+	    config.setHostl(hostl);
+	    propiedades.setProperty("Local.Conexion.HOSTL", hostl);
+	    // Variable de PUERTOL
+	    puertol = text.decrypt(propiedades
+		    .getProperty("Local.Conexion.PUERTOL"));
+	    config.setPuertol(Integer.parseInt(puertol));
+	    propiedades.setProperty("Local.Conexion.PUERTOL", puertol);
+	    // Variable de DBL
+	    dbl = text.decrypt(propiedades.getProperty("Local.DBL"));
+	    config.setDbl(dbl);
+	    propiedades.setProperty("Local.DBL", dbl);
+	    // Variable de USUARIOL
+	    usuariol = text.decrypt(propiedades
+		    .getProperty("Local.Login.USUARIOL"));
+	    config.setUsuariol(usuariol);
+	    propiedades.setProperty("Local.Login.USUARIOL", usuariol);
+	    // Variable de PASSWORDL
+	    passl = text.decrypt(propiedades.getProperty("Local.Login.PASSL"));
+	    config.setPassl(passl);
+	    propiedades.setProperty("Local.Login.PASSL", passl);
+
+	    // / BBDD remota
+	    // Variable de HOSTR
+	    hostr = text.decrypt(propiedades
+		    .getProperty("Remota.Conexion.HOSTR"));
+	    config.setHostr(hostr);
+	    propiedades.setProperty("Remota.Conexion.HOSTR", hostr);
+	    // Variable de PUERTOR
+	    puertor = text.decrypt(propiedades
+		    .getProperty("Remota.Conexion.PUERTOR"));
+	    config.setPuertor(Integer.parseInt(puertor));
+	    propiedades.setProperty("Remota.Conexion.PUERTOR", puertor);
+	    // Variable de DBR
+	    dbr = text.decrypt(propiedades.getProperty("Remota.DBR"));
+	    config.setDbr(dbr);
+	    propiedades.setProperty("Remota.DBR", dbr);
+	    // Variable de USUARIOR
+	    usuarior = text.decrypt(propiedades
+		    .getProperty("Remota.Login.USUARIOR"));
+	    config.setUserr(usuarior);
+	    propiedades.setProperty("Remota.Login.USUARIOR", usuarior);
+	    // Variable de PASSWORDR
+	    passr = text.decrypt(propiedades.getProperty("Remota.Login.PASSR"));
+	    config.setPassr(passr);
+	    propiedades.setProperty("Remota.Login.PASSR", passr);
+
+	    // TIEMPO de consulta a la pasarela
+	    tiempo = Integer.toString(config.getTiempo());
+	    propiedades.setProperty("TIEMPO", tiempo);
+	    System.out.println("TIEMPO en volcado: " + tiempo);
+
+	    // Vuelvo a encriptar los valores.
+	    flag = text.encrypt(propiedades.getProperty("FLAG"));
+	    propiedades.setProperty("FLAG", flag);
+
+	    flagcambios = text.encrypt(propiedades
+		    .getProperty("Remota.FLAG_CAMBIOS"));
+	    propiedades.setProperty("Remota.FLAG_CAMBIOS", flagcambios);
+
+	    config.setHostr(propiedades.getProperty("Remota.Conexion.HOSTR"));
+	    hostr = text.encrypt(propiedades
+		    .getProperty("Remota.Conexion.HOSTR"));
+	    propiedades.setProperty("Remota.Conexion.HOSTR", hostr);
+
+	    config.setPuertor(Integer.parseInt(propiedades
+		    .getProperty("Remota.Conexion.PUERTOR")));
+	    puertor = text.encrypt(propiedades
+		    .getProperty("Remota.Conexion.PUERTOR"));
+	    propiedades.setProperty("Remota.Conexion.PUERTOR", puertor);
+
+	    config.setDbr(propiedades.getProperty("Remota.DBR"));
+	    dbr = text.encrypt(propiedades.getProperty("Remota.DBR"));
+	    propiedades.setProperty("Remota.DBR", dbr);
+
+	    config.setUserr(propiedades.getProperty("Remota.Login.USUARIOR"));
+	    usuarior = text.encrypt(propiedades
+		    .getProperty("Remota.Login.USUARIOR"));
+	    propiedades.setProperty("Remota.Login.USUARIOR", usuarior);
+
+	    config.setPassr(propiedades.getProperty("Remota.Login.PASSR"));
+	    passr = text.encrypt(propiedades.getProperty("Remota.Login.PASSR"));
+	    propiedades.setProperty("Remota.Login.PASSR", passr);
+
+	    config.setHostl(propiedades.getProperty("Local.Conexion.HOSTL"));
+	    hostl = text.encrypt(propiedades
+		    .getProperty("Local.Conexion.HOSTL"));
+	    propiedades.setProperty("Local.Conexion.HOSTL", hostl);
+
+	    config.setPuertol(Integer.parseInt(propiedades
+		    .getProperty("Local.Conexion.PUERTOL")));
+	    puertol = text.encrypt(propiedades
+		    .getProperty("Local.Conexion.PUERTOL"));
+	    propiedades.setProperty("Local.Conexion.PUERTOL", puertol);
+
+	    config.setDbl(propiedades.getProperty("Local.DBL"));
+	    dbl = text.encrypt(propiedades.getProperty("Local.DBL"));
+	    propiedades.setProperty("Local.DBL", dbl);
+
+	    config.setUsuariol(propiedades.getProperty("Local.Login.USUARIOL"));
+	    usuariol = text.encrypt(propiedades
+		    .getProperty("Local.Login.USUARIOL"));
+	    propiedades.setProperty("Local.Login.USUARIOL", usuariol);
+
+	    config.setPassl(propiedades.getProperty("Local.Login.PASSL"));
+	    passl = text.encrypt(propiedades.getProperty("Local.Login.PASSL"));
+	    propiedades.setProperty("Local.Login.PASSL", passl);
+
+	    config.setTiempo(Integer.parseInt(propiedades.getProperty("TIEMPO")));
+	    tiempo = text.encrypt(propiedades.getProperty("TIEMPO"));
+	    propiedades.setProperty("TIEMPO", tiempo);
+
+	    // Actualizo el fichero de salida
+	    propiedades.store(confGuardar, null);
+
+	} catch (Exception e) {
+	    e.printStackTrace();
+
+	    Irrisoft.window.escribetextPane(
+		    "\nNo se ha podido guardar la configuración!!",
+		    Irrisoft.window.normal, false);
+	}
+
+    }
+
+    /**
+     * Inserto la configuracion inicial de los sensores que tiene el programador
+     * en la BBDD local.
+     * 
+     * @param codprog
+     * @param num_placa
+     * @param tipo_placa
+     * @param num_sensor
+     * @param num_borna
+     * @param uni_med
+     * @param uni_sal
+     * @param rang_med_min
+     * @param rang_med_max
+     * @param rang_sal_min
+     * @param rang_sal_max
+     * @param med_umbral_min
+     * @param med_umbral_max
+     * @param frec_lect
+     * @param frec_env
+     * @param k
+     * @param error_sup
+     * @param error_inf
+     * @param t_max_riego
+     * @param num_est_prop
+     * @param num_est_asoc
+     * @return
+     */
+    private boolean insertarConf_ini_sens(String codprog, int num_placa,
+	    String tipo_placa, String num_sensor, int num_borna,
+	    String uni_med, String uni_sal, double rang_med_min,
+	    double rang_med_max, double rang_sal_min, double rang_sal_max,
+	    double med_umbral_min, double med_umbral_max, int frec_lect,
+	    int frec_env, int k, int error_sup, int error_inf, int t_max_riego,
+	    String num_est_prop, String num_est_asoc) {
+
+	if (logger.isInfoEnabled()) {
+	    logger.info("Inserto sensor en Volclocal: " + num_sensor);
+	}
+
+	PreparedStatement ps = null;
+	Connection cnl = null;
+
+	try {
+	    cnl = IR.hiloescucha.getConnDB().conectal();
+	    ps = cnl.prepareStatement("INSERT INTO conf_ini_sens (codprog, num_placa, tipo_placa,"
+		    + "num_sensor, num_borna, uni_med,uni_sal, rang_med_min,rang_med_max,rang_sal_min,rang_sal_max,med_umbral_min,med_umbral_max,frec_lect, "
+		    + "frec_env,k,error_sup,error_inf,t_max_riego,num_est_prop,num_est_asoc) "
+		    + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+		    + "ON DUPLICATE KEY UPDATE "
+		    + "num_placa= VALUES(num_placa),"
+		    + "tipo_placa= VALUES(tipo_placa),"
+		    + "num_sensor= VALUES(num_sensor),"
+		    + "num_borna= VALUES(num_borna),"
+		    + "uni_med= VALUES(uni_med),"
+		    + "uni_sal= VALUES(uni_sal),"
+		    + "rang_med_min= VALUES(rang_med_min),"
+		    + "rang_med_max= VALUES(rang_med_max),"
+		    + "rang_sal_min= VALUES(rang_sal_min),"
+		    + "rang_sal_max= VALUES(rang_sal_max),"
+		    + "med_umbral_min= VALUES(med_umbral_min),"
+		    + "med_umbral_max= VALUES(med_umbral_max),"
+		    + "frec_lect= VALUES(frec_lect),"
+		    + "frec_env= VALUES(frec_env),"
+		    + "k= VALUES(k),"
+		    + "error_sup= VALUES(error_sup),"
+		    + "error_inf= VALUES(error_inf),"
+		    + "t_max_riego= VALUES(t_max_riego),"
+		    + "num_est_prop= VALUES(num_est_prop),"
+		    + "num_est_asoc= VALUES(num_est_asoc)");
+
+	    ps.setString(1, codprog);
+	    ps.setInt(2, num_placa);
+	    ps.setString(3, tipo_placa);
+	    ps.setString(4, num_sensor);
+	    ps.setInt(5, num_borna);
+	    ps.setString(6, uni_med);
+	    ps.setString(7, uni_sal);
+	    ps.setDouble(8, rang_med_min);
+	    ps.setDouble(9, rang_med_max);
+	    ps.setDouble(10, rang_sal_min);
+	    ps.setDouble(11, rang_sal_max);
+	    ps.setDouble(12, med_umbral_min);
+	    ps.setDouble(13, med_umbral_max);
+	    ps.setInt(14, frec_lect);
+	    ps.setInt(15, frec_env);
+	    ps.setInt(16, k);
+	    ps.setInt(17, error_sup);
+	    ps.setInt(18, error_inf);
+	    ps.setInt(19, t_max_riego);
+	    ps.setString(20, num_est_prop);
+	    ps.setString(21, num_est_asoc);
+
+	    ps.executeUpdate();
+	    return true;
+
+	} catch (SQLException | NullPointerException e) {
+	    if (e instanceof SQLException && logger.isErrorEnabled()) {
+		logger.error("No se ha podido actualizar la configuración inicial de sensores en la BBDD local: "
+			+ e.getMessage());
+	    } else if (e instanceof NullPointerException
+		    && logger.isErrorEnabled()) {
+		logger.error("Error de NullPointerException: " + e.getMessage());
+	    }
+	    return false;
+	} finally {
+	    try {
+		ps.close();
+		if (cnl != null)
+		    cnl.close();
+	    } catch (SQLException | NullPointerException e) {
+		if (e instanceof SQLException && logger.isErrorEnabled()) {
+		    logger.error("Error en la sentencia SQL: " + e.getMessage());
+		} else if (e instanceof NullPointerException
+			&& logger.isErrorEnabled()) {
+		    logger.error("Error de NullPointerException: "
+			    + e.getMessage());
+		}
+		IR.hiloescucha.getConnDB().desconectal();
+	    }
+	}
+
+    }
+
+    /**
+     * Inserto la configuracion inicial de valulas del programador en la BBDD
+     * local.
+     * 
+     * @param configuracion
+     * @param codigo
+     * @param estacion
+     * @param deco
+     * @param maestra
+     * @param latch
+     * @param goteo
+     * @return
+     */
+    private boolean insertarConf_ini_prog(int configuracion, String codigo,
+	    String estacion, int deco, int maestra, int latch, int goteo) {
+
+	if (logger.isInfoEnabled()) {
+	    logger.info("Inserto válvula en Volclocal: " + estacion);
+	}
+
+	PreparedStatement ps = null;
+	Connection cnl = null;
+
+	try {
+	    cnl = IR.hiloescucha.getConnDB().conectal();
+	    ps = cnl.prepareStatement("INSERT INTO conf_ini_prog (id_conf_ini_prog,codprog,num_estacion,deco,maestra,latch,goteo) "
+		    + "VALUES (?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE deco=VALUES(deco),maestra = VALUES(maestra),latch=VALUES(latch),goteo=VALUES(goteo)");
+	    ps.setInt(1, configuracion);
+	    ps.setString(2, codigo);
+	    ps.setString(3, estacion);
+	    ps.setInt(4, deco);
+	    ps.setInt(5, maestra);
+	    ps.setInt(6, latch);
+	    ps.setInt(7, goteo);
+	    ps.executeUpdate();
+	    return true;
+
+	} catch (SQLException | NullPointerException e) {
+	    if (e instanceof SQLException && logger.isErrorEnabled()) {
+		logger.error("No se ha podido introcucir la configuracion inicial del programador: "
+			+ e.getMessage());
+	    } else if (e instanceof NullPointerException
+		    && logger.isErrorEnabled()) {
+		logger.error("Error de NullPointerException: " + e.getMessage());
+	    }
+	    return false;
+	} finally {
+	    try {
+		ps.close();
+		if (cnl != null)
+		    cnl.close();
+	    } catch (SQLException | NullPointerException e) {
+		if (e instanceof SQLException && logger.isErrorEnabled()) {
+		    logger.error("Error en la sentencia." + e.getMessage());
+		} else if (e instanceof NullPointerException
+			&& logger.isErrorEnabled()) {
+		    logger.error("Error de NullPointerException: "
+			    + e.getMessage());
+		}
+		IR.hiloescucha.getConnDB().desconectal();
+	    }
+	}
+
+    }
+
+    /**
+     * Elimino la tabla entera del String que se pase por campo.
+     * 
+     * @param tabla
+     * @return
+     */
+    private boolean borratabla(String tabla) {
+
+	PreparedStatement ps = null;
+	Connection cnl = null;
+	try {
+	    cnl = IR.hiloescucha.getConnDB().conectal();
+	    ps = cnl.prepareStatement("delete from " + tabla);
+
+	    ps.executeUpdate();
+	    return true;
+
+	} catch (SQLException | NullPointerException e) {
+	    if (logger.isErrorEnabled()) {
+		logger.error("No se ha podido borrar la tabla " + tabla);
+		logger.error(e.getMessage());
+	    }
+	    return false;
+	} finally {
+	    try {
+		ps.close();
+		if (cnl != null)
+		    cnl.close();
+	    } catch (SQLException | NullPointerException e) {
+		if (e instanceof SQLException && logger.isErrorEnabled()) {
+		    logger.error("Error en la sentencia." + e.getMessage());
+		} else if (e instanceof NullPointerException
+			&& logger.isErrorEnabled()) {
+		    logger.error("Error de NullPointerException: "
+			    + e.getMessage());
+		}
+		IR.hiloescucha.getConnDB().desconectal();
+	    }
+	}
+
+    }
+
+    // LECTURA DE SENSORES A GIS
+    //
+    /**
+     * Inserto la temperatura en la BBDD Remota (GIS).
+     * 
+     * @param codsens
+     * @param temp
+     * @param uni
+     */
+
+    public boolean insertaregtemp(LecturasSensor lecturaTemp) {
+
+	boolean insRegTemp = true;
+	CallableStatement cs = null;
+	Connection cnr = null;
+	try {
+
+	    cnr = conectar();
+	    cs = cnr.prepareCall("{ call P058_I_REGTEMP(?,?,?,?) }");
+	    cs.setString("V_CODPROG", Irrisoft.config.getIdrasp());
+	    cs.setString("V_CODSENSOR", lecturaTemp.getNombreSensor());
+	    cs.setDouble("V_TEMPERATURA", lecturaTemp.getTemperatura());
+	    cs.setTimestamp("V_FECHA", lecturaTemp.getFecha());
+	    cs.execute();
+
+	    logger.warn("Inserto registro de temperatura en GIS.");
+
+	} catch (SQLException | NullPointerException e) {
+	    if (logger.isErrorEnabled()) {
+		if (e instanceof SQLException)
+		    logger.error("Error de Base de Datos:" + e.getMessage());
+		else if (e instanceof NullPointerException)
+		    logger.error("Error de NullPointerException de BBDD Remota: "
+			    + e.getMessage());
+	    }
+	    IR.hiloescucha.getConnDB().insertarLecturasBBDD(lecturaTemp);
+	    insRegTemp = false;
+	} finally {
+	    try {
+		if (cs != null)
+		    cs.close();
+		if (cnr != null)
+		    cnr.close();
+	    } catch (SQLException | NullPointerException e) {
+		if (e instanceof SQLException && logger.isErrorEnabled()) {
+		    logger.error("Error a la hora de cerrar la conexion con la BBDD Remota:"
+			    + e.getMessage());
+		} else if (e instanceof NullPointerException
+			&& logger.isErrorEnabled()) {
+		    logger.error("Error de NullPointerException: "
+			    + e.getMessage());
+		}
+		cierrar();
+	    }
+	}
+	return insRegTemp;
+
+    }
+
+    /**
+     * Inserto el viento en la BBDD Remota (GIS).
+     * 
+     * @param codsens
+     * @param vel
+     */
+
+    public boolean insertaregviento(LecturasSensor lectuViento) {
+
+	boolean insRegVien = true;
+	CallableStatement cs = null;
+	Connection cnr = null;
+	try {
+
+	    cnr = conectar();
+	    cs = cnr.prepareCall("{ call P059_I_REGVIENTO(?,?,?,?) }");
+	    cs.setString("V_CODPROG", Irrisoft.config.getIdrasp());
+	    cs.setString("V_CODSENSOR", lectuViento.getNombreSensor());
+	    cs.setDouble("V_CATA", lectuViento.getVelocidadAnemometro());
+	    cs.setTimestamp("V_FECHA", lectuViento.getFecha());
+	    cs.execute();
+
+	    logger.warn("Inserto registro de viento en GIS.");
+
+	} catch (SQLException | NullPointerException e) {
+	    if (logger.isErrorEnabled()) {
+		if (e instanceof SQLException)
+		    logger.error("Error de sentencia SQL:" + e.getMessage());
+		else if (e instanceof NullPointerException)
+		    logger.error("Error de NullPointerException en BBDD Remota: "
+			    + e.getMessage());
+	    }
+	    IR.hiloescucha.getConnDB().insertarLecturasBBDD(lectuViento);
+	    insRegVien = false;
+	} finally {
+	    try {
+		if (cs != null)
+		    cs.close();
+		if (cnr != null)
+		    cnr.close();
+	    } catch (SQLException | NullPointerException e) {
+		if (e instanceof SQLException && logger.isErrorEnabled()) {
+		    logger.error("Error a la hora de cerrar la conexion con la BBDD Remota."
+			    + e.getMessage());
+		} else if (e instanceof NullPointerException
+			&& logger.isErrorEnabled()) {
+		    logger.error("Error de NullPointerException: "
+			    + e.getMessage());
+		}
+		cierrar();
+	    }
+	}
+	return insRegVien;
+
+    }
+
+    /**
+     * Inserto la lluvia en la BBDD Remota (GIS).
+     * 
+     * @param codsens
+     * @param lluvia
+     */
+
+    public boolean insertareglluvia(LecturasSensor lectuLluvia) {
+
+	boolean insRegLlu = true;
+	CallableStatement cs = null;
+	Connection cnr = null;
+	try {
+
+	    cnr = conectar();
+	    cs = cnr.prepareCall("{ call P060_I_REGLLUVIA(?,?,?,?) }");
+	    cs.setString("V_CODPROG", Irrisoft.config.getIdrasp());
+	    cs.setString("V_CODSENSOR", lectuLluvia.getNombreSensor());
+	    cs.setInt("V_LLUVIA", lectuLluvia.getLluvia());
+	    cs.setTimestamp("V_FECHA", lectuLluvia.getFecha());
+	    cs.execute();
+	    logger.warn("Inserto registro de lluvia en GIS.");
+
+	} catch (SQLException | NullPointerException e) {
+	    if (logger.isErrorEnabled()) {
+		if (e instanceof SQLException)
+		    logger.error("Error de sentencia SQL:" + e.getMessage());
+		else if (e instanceof NullPointerException)
+		    logger.error("Error de NullPointerException BBDD Remota: "
+			    + e.getMessage());
+	    }
+	    IR.hiloescucha.connDB.insertarLecturasBBDD(lectuLluvia);
+	    insRegLlu = false;
+	} finally {
+	    try {
+		if (cs != null)
+		    cs.close();
+		if (cnr != null)
+		    cnr.close();
+	    } catch (SQLException | NullPointerException e) {
+		if (e instanceof SQLException && logger.isErrorEnabled()) {
+		    logger.error("Error a la hora de cerrar la conexion con la BBDD Remota."
+			    + e.getMessage());
+		} else if (e instanceof NullPointerException
+			&& logger.isErrorEnabled()) {
+		    logger.error("Error de NullPointerException: "
+			    + e.getMessage());
+		}
+		cierrar();
+	    }
+	}
+	return insRegLlu;
+    }
+
+    /**
+     * Metodo para enviar el registro de agua diario. FALTA EL PROCEDIMIENTO EN
+     * GIS.
+     * 
+     * @param codsens
+     * @param consumo
+     * @param fecha
+     */
+
+    public boolean insertarRegConsumo(int consumo, Timestamp fecha) {
+
+	boolean insRegCon = true;
+	CallableStatement cs = null;
+	Connection cnr = null;
+	try {
+
+	    cnr = conectar();
+	    cs = cnr.prepareCall("{ call P112_I_REGCONSUMO(?,?,?) }");
+
+	    cs.setString("V_CODPROG", Irrisoft.config.getIdrasp());
+	    cs.setTimestamp("V_FECHA", fecha);
+	    cs.setInt("V_VALOR", consumo);
+
+	    cs.execute();
+	    logger.warn("Registro de consumo diario de agua enviado a GIS");
+
+	    IR.escribetextPane("\nConsumo diario de agua enviado: " + consumo
+		    + " , ", IR.normal, true);
+
+	} catch (SQLException | NullPointerException e) {
+	    if (e instanceof SQLException && logger.isErrorEnabled()) {
+		logger.error("Error de SQL: " + e.getMessage());
+	    } else if (e instanceof NullPointerException
+		    && logger.isErrorEnabled()) {
+		logger.error("Error de NullPointerException BBDD Remota: "
+			+ e.getMessage());
+	    }
+	    insRegCon = false;
+	} finally {
+	    try {
+		if (cs != null)
+		    cs.close();
+		if (cnr != null)
+		    cnr.close();
+	    } catch (SQLException | NullPointerException e) {
+		if (e instanceof SQLException && logger.isErrorEnabled()) {
+		    logger.error("Error a la de cerrar la conexion de la BBDD Remota: "
+			    + e.getMessage());
+		} else if (e instanceof NullPointerException
+			&& logger.isErrorEnabled()) {
+		    logger.error("Error de NullPointerException: "
+			    + e.getMessage());
+		}
+
+		cierrar();
+
+	    }
+	}
+	return insRegCon;
+    }
+
+    /**
+     * Inserto el valor del sensor de intrusion en GIS. FALTA EL PROCEDIMIENTO
+     * ALMACENADO EN GIS.
+     * 
+     * @param codsens
+     * @param intru
+     * @param fecha
+     */
+    public boolean insertarRegIntrusion(String codsens, boolean intru,
+	    Timestamp fecha) {
+
+	boolean insRegInt = true;
+	CallableStatement cs = null;
+	Connection cnr = null;
+
+	try {
+	    cnr = conectar();
+	    cs = cnr.prepareCall("");
+	    cs.setString("", Irrisoft.config.getIdrasp());
+	    cs.setString("V_CODSENSOR", codsens);
+	    cs.setBoolean("", intru);
+	    cs.setTimestamp("V_FECHA", fecha);
+	    cs.execute();
+
+	    logger.warn("Registro de intrusion enviado a GIS.");
+
+	} catch (SQLException | NullPointerException e) {
+	    if (e instanceof SQLException && logger.isErrorEnabled()) {
+		logger.error("Error de sentencia SQL: " + e.getMessage());
+	    } else if (e instanceof NullPointerException
+		    && logger.isErrorEnabled()) {
+		logger.error("Error de NullPointerException de BBDD Remota: "
+			+ e.getMessage());
+	    }
+	    insRegInt = false;
+	} finally {
+	    try {
+		cs.close();
+		cnr.close();
+	    } catch (SQLException | NullPointerException e) {
+		if (e instanceof SQLException && logger.isErrorEnabled()) {
+		    logger.error("Error a la hora de cerrar la conexion con la BBDD Remota: "
+			    + e.getMessage());
+		} else if (e instanceof NullPointerException
+			&& logger.isErrorEnabled()) {
+		    logger.error("Error de NullPointerException: "
+			    + e.getMessage());
+		}
+		cierrar();
+	    }
+	}
+	return insRegInt;
+    }
+
+    // METODO PARA MANDAR ALERTAS PENDIENTES A GIS POR SI SE PIERDE CONEXION Y
+    // LUZ
+    //
+    /**
+     * Inserto la Alerta en la BBDD Remota GIS.
+     * 
+     * @param alerta
+     * @return
+     */
+    public boolean insertarAlertaGIS(Alerta alerta) {
+
+	boolean insAlerta = true;
+	CallableStatement cs = null;
+	Connection cnr = null;
+
+	try {
+
+	    cnr = conectar();
+	    cs = cnr.prepareCall("{ call P046_I_ALERTA(?,?,?,?,?) }");
+	    cs.setTimestamp("V_FCALERTA", alerta.getFechaAlerta());
+	    cs.setInt("V_CODALERTA", alerta.getCodAlerta());
+	    cs.setString("V_CODPROG", Irrisoft.config.getIdrasp());
+	    cs.setString("V_DSALERTA", alerta.getDsalerta());
+	    cs.setInt("V_IDUSUARIOAUDIT", 0);
+	    cs.execute();
+
+	    logger.warn("Alerta " + alerta.getCodAlerta()
+		    + " enviada a GIS, Fecha: " + alerta.getFechaAlerta());
+
+	} catch (SQLException | NullPointerException e) {
+	    if (e instanceof SQLException && logger.isErrorEnabled()) {
+		logger.error("Error en la sentencia SQL: " + e.getMessage());
+	    } else if (e instanceof NullPointerException
+		    && logger.isErrorEnabled()) {
+		logger.error("Error de NullPointerException de BBDD Remota: "
+			+ e.getMessage());
+	    }
+	    insAlerta = false;
+	    IR.hiloescucha.getConnDB().insertarAlertasBBDD(alerta);
+
+	} finally {
+	    try {
+		if (cs != null)
+		    cs.close();
+		if (cnr != null)
+		    cnr.close();
+
+	    } catch (SQLException | NullPointerException e) {
+		if (e instanceof SQLException && logger.isErrorEnabled()) {
+		    logger.error("Error con el procedimiento almacenado P046_I_AERTA: "
+			    + e.getMessage());
+		} else if (e instanceof NullPointerException
+			&& logger.isErrorEnabled()) {
+		    logger.error("Error de NullPointerException: "
+			    + e.getMessage());
+		}
+		cierrar();
+	    }
+	}
+	return insAlerta;
+
+    }
+
+    /**
+     * Actualizo el estado de la valvula en GIS.
+     * 
+     * @param codelec
+     * @param estado
+     * @param valv2
+     */
+    public boolean acualizaestvalvremoto(String codelec, int estado) {
+
+	boolean actualizadoEstadoValvula = true;
+	CallableStatement cs = null;
+	Connection cnr = null;
+
+	try {
+	    cnr = conectar();
+	    cs = cnr.prepareCall("{ call P074_U_ESTADO(?,?,?) }");
+	    cs.setString("V_CODPROG", Irrisoft.config.getIdrasp());
+	    cs.setString("V_NUMERESTA", codelec);
+	    cs.setInt("V_ESTADO", estado);
+	    cs.execute();
+
+	    logger.warn("Actualizo valvula: " + codelec + " y el estado es: "
+		    + estado);
+
+	} catch (SQLException | NullPointerException e) {
+	    if (e instanceof SQLException && logger.isErrorEnabled()) {
+		logger.error("Error de Base de Datos:" + e.getMessage());
+	    } else if (e instanceof NullPointerException
+		    && logger.isErrorEnabled()) {
+		logger.error("Error de NullPointerException: " + e.getMessage());
+	    }
+	    logger.error("No se ha podido actualizar el estado de la valvula "
+		    + codelec + " en remoto.");
+
+	    // Si el estado es de abrir = 1, mando la alerta 2.
+	    // Si es de cerrar = 0, mando la alerta 3.
+
+	    int valorValvula;
+	    if (estado == 1)
+		valorValvula = 2;
+	    else
+		valorValvula = 3;
+	    ga.insertarAlarmasExteriores(valorValvula, codelec);
+	    // ga.insertarAlarma(valor, codelec);
+
+	    actualizadoEstadoValvula = false;
+
+	} finally {
+	    try {
+		if (cs != null)
+		    cs.close();
+		if (cnr != null)
+		    cnr.close();
+	    } catch (SQLException | NullPointerException e) {
+		if (e instanceof SQLException && logger.isErrorEnabled()) {
+		    logger.error("Error de Base de Datos:" + e.getMessage());
+		} else if (e instanceof NullPointerException
+			&& logger.isErrorEnabled()) {
+		    logger.error("Error de NullPointerException: "
+			    + e.getMessage());
+		}
+		cierrar();
+	    }
+	}
+
+	return actualizadoEstadoValvula;
+    }
+
+    /**
+     * Metodo para poner en activo el programador.
+     * 
+     * @param valor
+     * @return Devuelve true si ha actualizado correctamente sino devuelve
+     *         false.
+     */
+    public boolean programadorActivo(int valor) {
+
+	boolean programaAct = true;
+	CallableStatement cs = null;
+	Connection cnr = null;
+
+	try {
+	    cnr = conectar();
+
+	    cs = cnr.prepareCall("{ call P076_U_PROGRAMADOR_ACTIVO(?,?)}");
+	    cs.setString("V_CODPROG", Irrisoft.config.getIdrasp());
+	    cs.setInt("V_ACTIVO", valor);
+	    cs.execute();
+
+	    if (valor == 1) {
+		logger.warn("Programador:" + Irrisoft.config.getIdrasp()
+			+ " activo");
+	    } else {
+		logger.warn("Programador:" + Irrisoft.config.getIdrasp()
+			+ " no activo");
+
+	    }
+	} catch (SQLException | NullPointerException e) {
+	    if (e instanceof SQLException && logger.isErrorEnabled()) {
+		e.printStackTrace();
+		logger.error("Error de Base de Datos: " + e.getMessage());
+	    } else if (e instanceof NullPointerException
+		    && logger.isErrorEnabled()) {
+		logger.error("Error de NullPointerException: " + e.getMessage());
+	    }
+	    ga.insertarAlarmasExteriores(valor, Irrisoft.config.getIdrasp());
+	    // ga.insertarAlarma(valor, Irrisoft.config.getIdrasp());
+	    programaAct = false;
+
+	} finally {
+	    try {
+		if (cs != null)
+		    cs.close();
+		if (cnr != null)
+		    cnr.close();
+	    } catch (SQLException | NullPointerException e) {
+		if (e instanceof SQLException && logger.isErrorEnabled()) {
+		    logger.error("Error de Base de Datos en programadorActivo: "
+			    + e.getMessage());
+		} else if (e instanceof NullPointerException
+			&& logger.isErrorEnabled()) {
+		    logger.error("Error de NullPointerException: "
+			    + e.getMessage());
+		}
+		cierrar();
+	    }
+	}
+	return programaAct;
+    }
+
+    // METODOS DE TESTEOS, METODOS RELACIONADOS CON LOS CONSUMOS MODELOS DE LAS
+    // VALVULAS.
+    // //////////////////////////////////////////////////////////////////////////
+    /**
+     * Insertar los consumos de las valvulas en la BBDD Remota (GIS.).
+     * 
+     * @param valvula
+     * @param caudal
+     * @param intensidad
+     */
+    public void insertarconsumostest(String valvula, float caudal,
+	    int intensidad) {
+
+	CallableStatement cs = null;
+	Connection cnr = null;
+
+	try {
+
+	    cnr = conectar();
+	    cs = cnr.prepareCall("{ call P057_I_CONSUMO(?,?,?,?,?) }");
+	    cs.setString("V_CODPROG", Irrisoft.config.getIdrasp());
+	    cs.setString("V_CODESTACION", valvula);
+	    cs.setFloat("V_CAUDAL", caudal);
+	    cs.setFloat("V_CONSUMELEC", intensidad);
+	    cs.setTimestamp("V_FECHA", new Timestamp(Calendar.getInstance()
+		    .getTime().getTime()));
+	    cs.execute();
+	} catch (SQLException | NullPointerException e) {
+	    if (e instanceof SQLException && logger.isErrorEnabled()) {
+		logger.error("Error de Base de Datos:" + e.getMessage());
+	    } else if (e instanceof NullPointerException
+		    && logger.isErrorEnabled()) {
+		logger.error("Error de NullPointerException: " + e.getMessage());
+	    }
+	} finally {
+	    try {
+		cs.close();
+		if (cnr != null)
+		    cnr.close();
+	    } catch (SQLException | NullPointerException e) {
+		if (e instanceof SQLException && logger.isErrorEnabled()) {
+		    logger.error("Error en la sentencia." + e.getMessage());
+		} else if (e instanceof NullPointerException
+			&& logger.isErrorEnabled()) {
+		    logger.error("Error de NullPointerException: "
+			    + e.getMessage());
+		}
+		cierrar();
+	    }
+	}
+    }
+
+    /**
+     * Sobre escribe los consumos de las valvulas en la BBDD Remota (GIS).
+     * 
+     * @param valvula
+     * @param caudal
+     * @param intensidad
+     */
+    public void sobrescriberconsumostest(String valvula, float caudal,
+	    int intensidad) {
+
+	CallableStatement cs = null;
+	Connection cnr = null;
+
+	try {
+
+	    cnr = conectar();
+	    cs = cnr.prepareCall("{ call P057_U_CONSUMO(?,?,?,?) }");
+	    cs.setString("V_CODPROG", Irrisoft.config.getIdrasp());
+	    cs.setString("V_CODESTACION", valvula);
+	    cs.setFloat("V_CAUDAL", caudal);
+	    cs.setFloat("V_CONSUMELEC", intensidad);
+	    cs.execute();
+	} catch (SQLException | NullPointerException e) {
+	    if (e instanceof SQLException && logger.isErrorEnabled()) {
+		logger.error("Error de Base de Datos:" + e.getMessage());
+	    } else if (e instanceof NullPointerException
+		    && logger.isErrorEnabled()) {
+		logger.error("Error de NullPointerException: " + e.getMessage());
+	    }
+	} finally {
+	    try {
+		cs.close();
+		if (cnr != null)
+		    cnr.close();
+	    } catch (SQLException | NullPointerException e) {
+		if (e instanceof SQLException && logger.isErrorEnabled()) {
+		    logger.error("Error en la sentencia." + e.getMessage());
+		} else if (e instanceof NullPointerException
+			&& logger.isErrorEnabled()) {
+		    logger.error("Error de NullPointerException: "
+			    + e.getMessage());
+		}
+		cierrar();
+	    }
+	}
+
+    }
+
+    /**
+     * Borra los consumos de la tabla en la BBDD Remota (GIS).
+     */
+    public void borrarconsumtest() {
+
+	CallableStatement cs = null;
+	Connection cnr = null;
+
+	try {
+	    cnr = conectar();
+	    cs = cnr.prepareCall("{ call P057_D_CONSUMO(?) }");
+	    cs.setString("V_CODPROG", Irrisoft.config.getIdrasp());
+	    cs.execute();
+	} catch (SQLException | NullPointerException e) {
+	    if (e instanceof SQLException && logger.isErrorEnabled()) {
+		logger.error("Error de Base de Datos:" + e.getMessage());
+	    } else if (e instanceof NullPointerException
+		    && logger.isErrorEnabled()) {
+		logger.error("Error de NullPointerException: " + e.getMessage());
+	    }
+	} finally {
+	    try {
+		cs.close();
+		if (cnr != null)
+		    cnr.close();
+	    } catch (SQLException | NullPointerException e) {
+		if (e instanceof SQLException && logger.isErrorEnabled()) {
+		    logger.error("Error en la sentencia." + e.getMessage());
+		} else if (e instanceof NullPointerException
+			&& logger.isErrorEnabled()) {
+		    logger.error("Error de NullPointerException: "
+			    + e.getMessage());
+		}
+		cierrar();
+	    }
+	}
+
+    }
+
+    // GETTERS Y SETTERS
+    //
+    /**
+     * Cojo el valor de la Conexion Remota
+     * 
+     * @return
+     */
+    public Connection getConnr() {
+	return cnr;
+    }
+
+    /**
+     * Coloco el valor de la conexion Remota.
+     * 
+     * @param connr
+     */
+    public void setConnr(Connection connr) {
+
+	this.cnr = connr;
+    }
+
+    public Conf getConfig() {
+	return config;
+    }
+
+    public void setConfig(Conf config) {
+	this.config = config;
+    }
+
+    // LOS METODOS SET PARA EL LISTENER
+    //
+    /**
+     * Cojo el valor de la variable conectador.
+     * 
+     * @return
+     */
+    public boolean isConectador() {
+	return conectador;
+    }
+
+    /**
+     * Seteo la variable conectador para avisar a todos los listener que estan
+     * escuchando de que hay conexion con la BBDD Remota.
+     * 
+     * @param conectadoRe
+     */
+    public void setConectador(boolean conectadoRe) {
+	boolean vieja = this.conectador;
+	this.conectador = conectadoRe;
+
+	if (conectadoRe) {
+	    changeSupport.firePropertyChange("conectador", vieja,
+		    this.conectador);
+	    System.out.println("ConVolcado manda conectador");
+
+	} else {
+	    changeSupport.firePropertyChange("desconectador", vieja,
+		    this.conectador);
+	    System.out.println("ConVolcado manda desconectador");
+	}
+    }
+
+    /**
+     * Cojo la variable de la variable sincronizar.
+     * 
+     * @return
+     */
+    public boolean isSincronizar() {
+	return sincronizar;
+    }
+
+    /**
+     * Seteo la variable para avisar a los hilos de que se va a sincronizar el
+     * programador y que se tiene que eliminar los hilos.
+     * 
+     * @param sincronizarRe
+     */
+    public void setSincronizar(boolean sincronizarRe) {
+	boolean vieja = this.sincronizar;
+	this.sincronizar = sincronizarRe;
+	if (sincronizarRe)
+	    changeSupport.firePropertyChange("sincronizar", vieja,
+		    this.sincronizar);
+
+    }
+
+    // PROPERTY CHANGE LISTENER
+    //
+    /**
+     * Añado el listener a la clase.
+     * 
+     * @param campo
+     * @param listener
+     */
+    public void addPropertyChangeListener(String campo,
+	    PropertyChangeListener listener) {
+	logger.info("Estoy en addPropertyChangeListener de Conexion Volcado");
+	this.changeSupport.addPropertyChangeListener(campo, listener);
+
+    }
+
+    /**
+     * Elimino el listener de la clase.
+     * 
+     * @param campo
+     * @param listener
+     */
+    public void removePropertyChangeListener(String campo,
+	    PropertyChangeListener listener) {
+	logger.info("Estoy en removePropertyChangeListener de Conexion Volcado");
+	this.changeSupport.removePropertyChangeListener(campo, listener);
+    }
+
+}

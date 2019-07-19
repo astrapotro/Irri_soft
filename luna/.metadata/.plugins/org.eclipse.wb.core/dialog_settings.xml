@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<section name="Workbench">
+	<section name="org.eclipse.wb.internal.core.model.util.RenameConvertSupport$RenameDialog">
+		<item value="654" key="x"/>
+		<item value="613" key="width"/>
+		<item value="46" key="y"/>
+		<item value="394" key="height"/>
+	</section>
+	<section name="org.eclipse.wb.internal.core.model.property.order.ReorderDialog">
+		<item value="669" key="x"/>
+		<item value="581" key="width"/>
+		<item value="322" key="y"/>
+		<item value="460" key="height"/>
+	</section>
+	<section name="org.eclipse.wb.internal.core.editor.palette.dialogs.ImportArchiveDialog">
+		<item value="654" key="x"/>
+		<item value="613" key="width"/>
+		<item value="46" key="y"/>
+		<item value="482" key="height"/>
+		<list key="HISTORY_JAR_LIST">
+			<item value="/home/mikel/Dev/perica/luna/GestDropper_Diario_Agua/jcalendar-1.4.jar"/>
+		</list>
+	</section>
+	<section name="org.eclipse.wb.internal.core.model.property.editor.string.StringPropertyDialog">
+		<item value="667" key="x"/>
+		<item value="587" key="width"/>
+		<item value="46" key="y"/>
+		<item value="434" key="height"/>
+	</section>
+</section>
